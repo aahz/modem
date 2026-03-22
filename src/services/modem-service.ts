@@ -52,7 +52,10 @@ export class ModemService {
     if (this.interactiveSessions > 0) {
       throw new Error("Interactive terminal session is active");
     }
-    await this.ensureConnected();
+    const atMode = await this.ensureAtCommandMode();
+    if (!atMode.ok) {
+      throw new Error(atMode.message);
+    }
     return this.enqueue(() => this.executeCommand(command, timeoutMs));
   }
 
@@ -152,6 +155,18 @@ export class ModemService {
       message:
         "Could not switch modem to AT mode; modem may still be in binary data mode",
     };
+  }
+
+  async checkAtCommandMode(): Promise<boolean> {
+    await this.ensureConnected();
+    return this.enqueue(async () => this.probeAtMode(1200));
+  }
+
+  async recoverAtCommandMode(): Promise<{
+    ok: boolean;
+    message: string;
+  }> {
+    return this.ensureAtCommandMode();
   }
 
   private async enqueue<T>(task: () => Promise<T>): Promise<T> {

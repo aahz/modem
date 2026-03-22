@@ -22,6 +22,30 @@ atRouter.get("/modem/status", async (_req, res) => {
   res.json(modemService.status());
 });
 
+atRouter.get("/modem/mode", async (_req, res) => {
+  try {
+    const atModeReady = await modemService.checkAtCommandMode();
+    res.json({ atModeReady });
+  } catch (error) {
+    res.status(502).json({
+      error: "Failed to check modem mode",
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+atRouter.post("/modem/recover-mode", async (_req, res) => {
+  try {
+    const result = await modemService.recoverAtCommandMode();
+    res.json(result);
+  } catch (error) {
+    res.status(502).json({
+      error: "Failed to recover modem mode",
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
 atRouter.post("/at/send", async (req, res) => {
   const parsed = sendAtSchema.safeParse(req.body);
   if (!parsed.success) {
