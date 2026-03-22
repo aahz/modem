@@ -7,6 +7,7 @@ import { fileURLToPath } from "url";
 import { RawData, WebSocket, WebSocketServer } from "ws";
 import { config } from "./config.js";
 import { getDb } from "./database.js";
+import { commandLogEvents, CommandLogEvent } from "./log-events.js";
 import { authenticateToken } from "./middleware/auth.js";
 import { createRateLimit } from "./middleware/rate-limit.js";
 import { atRouter } from "./routes/at-routes.js";
@@ -49,6 +50,51 @@ async function bootstrap(): Promise<void> {
     res.json({
       status: "ok",
       modem: modemService.status(),
+    });
+  });
+
+  app.get("/api/v1/logs/stream", async (req, res) => {
+    const queryToken = typeof req.query.token === "string" ? req.query.token : null;
+    const authHeader = req.headers.authorization;
+    const headerToken = authHeader?.toLowerCase().startsWith("bearer ")
+      ? authHeader.slice(7)
+      : null;
+    const token = queryToken || headerToken;
+
+    if (!token) {
+      res.status(401).json({ error: "Missing token for stream" });
+      return;
+    }
+
+    const principal = await authenticateToken(token);
+    if (!principal) {
+      res.status(401).json({ error: "Unauthorized stream token" });
+      return;
+    }
+    if (principal.mustChangePassword) {
+      res.status(403).json({
+        error: "Password change required",
+        code: "PASSWORD_CHANGE_REQUIRED",
+      });
+      return;
+    }
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+    res.write("event: ready\ndata: {}\n\n");
+
+    const listener = (event: CommandLogEvent) => {
+      if (principal.role !== "admin" && event.actor_user_id !== principal.id) {
+        return;
+      }
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    commandLogEvents.on(listener);
+    req.on("close", () => {
+      commandLogEvents.off(listener);
     });
   });
 

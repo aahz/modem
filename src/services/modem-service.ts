@@ -70,7 +70,7 @@ export class ModemService {
     handlers.onSystem("interactive session opened");
 
     const onData = (chunk: Buffer): void => {
-      handlers.onData(chunk.toString("utf8"));
+      handlers.onData(chunk.toString("latin1"));
     };
     const onError = (error: Error): void => {
       handlers.onSystem(`serial error: ${error.message}`);

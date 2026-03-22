@@ -1,6 +1,6 @@
 import { Flex, Heading, ProgressCircle, Text, View } from "@adobe/react-spectrum";
 import { useEffect, useRef, useState } from "react";
-import { Terminal as XtermTerminal } from "xterm";
+import { IDisposable, Terminal as XtermTerminal } from "xterm";
 import { api } from "./lib/api";
 import { ApiToken, CommandLog, Principal, Role } from "./types";
 import { LoginPanel } from "./components/LoginPanel";
@@ -43,6 +43,7 @@ export function App() {
   const terminalHostRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<XtermTerminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const terminalDataSubscriptionRef = useRef<IDisposable | null>(null);
 
   const securityLocked = Boolean(user?.mustChangePassword);
 
@@ -230,7 +231,13 @@ export function App() {
     ws.onopen = () => {
       setTerminalConnected(true);
       terminalRef.current?.writeln("\r\n[connected]");
-      terminalRef.current?.onData((data) => ws.send(data));
+      terminalDataSubscriptionRef.current?.dispose();
+      terminalDataSubscriptionRef.current =
+        terminalRef.current?.onData((data) => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(data);
+          }
+        }) ?? null;
     };
 
     ws.onmessage = (event) => {
@@ -251,11 +258,15 @@ export function App() {
     ws.onerror = () => {
       terminalRef.current?.writeln("\r\n[socket error]");
       setTerminalConnected(false);
+      terminalDataSubscriptionRef.current?.dispose();
+      terminalDataSubscriptionRef.current = null;
     };
 
     ws.onclose = () => {
       terminalRef.current?.writeln("\r\n[disconnected]");
       setTerminalConnected(false);
+      terminalDataSubscriptionRef.current?.dispose();
+      terminalDataSubscriptionRef.current = null;
       wsRef.current = null;
     };
 
@@ -263,6 +274,8 @@ export function App() {
   }
 
   function closeTerminal(): void {
+    terminalDataSubscriptionRef.current?.dispose();
+    terminalDataSubscriptionRef.current = null;
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -312,6 +325,8 @@ export function App() {
   useEffect(() => {
     initTerminal();
     return () => {
+      terminalDataSubscriptionRef.current?.dispose();
+      terminalDataSubscriptionRef.current = null;
       terminalRef.current?.dispose();
       terminalRef.current = null;
     };
