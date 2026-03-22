@@ -5,7 +5,11 @@ import {
   listApiTokens,
   revokeApiToken,
 } from "../database.js";
-import { authenticate, requireRole } from "../middleware/auth.js";
+import {
+  authenticate,
+  requirePasswordChanged,
+  requireRole,
+} from "../middleware/auth.js";
 import { hashToken, randomToken } from "../security.js";
 
 const createTokenSchema = z.object({
@@ -15,7 +19,7 @@ const createTokenSchema = z.object({
 
 export const tokenRouter = Router();
 
-tokenRouter.use(authenticate, requireRole("admin"));
+tokenRouter.use(authenticate, requirePasswordChanged, requireRole("admin"));
 
 tokenRouter.get("/tokens", async (_req, res) => {
   const tokens = await listApiTokens();

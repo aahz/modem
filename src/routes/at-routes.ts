@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { config } from "../config.js";
 import { writeCommandLog } from "../database.js";
-import { authenticate } from "../middleware/auth.js";
+import { authenticate, requirePasswordChanged } from "../middleware/auth.js";
 import {
   isUserCommandAllowed,
   normalizeAtCommand,
@@ -16,7 +16,7 @@ const sendAtSchema = z.object({
 
 export const atRouter = Router();
 
-atRouter.use(authenticate);
+atRouter.use(authenticate, requirePasswordChanged);
 
 atRouter.get("/modem/status", async (_req, res) => {
   res.json(modemService.status());

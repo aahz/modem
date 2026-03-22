@@ -3,7 +3,8 @@ import path from "path";
 import sqlite3 from "sqlite3";
 import { Database, open } from "sqlite";
 import { config } from "./config.js";
-import { hashPassword } from "./security.js";
+import { commandLogEvents } from "./log-events.js";
+import { hashPassword, randomToken } from "./security.js";
 import { Role } from "./types.js";
 
 interface UserRow {
@@ -12,6 +13,7 @@ interface UserRow {
   password_hash: string;
   role: Role;
   is_active: number;
+  must_change_password: number;
   created_at: string;
 }
 
@@ -38,6 +40,7 @@ async function migrate(db: Database): Promise<void> {
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL CHECK(role IN ('admin', 'user')),
       is_active INTEGER NOT NULL DEFAULT 1,
+      must_change_password INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -66,6 +69,18 @@ async function migrate(db: Database): Promise<void> {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  const userColumns = await db.all<Array<{ name: string }>>(
+    "PRAGMA table_info(users)"
+  );
+  const hasMustChangePassword = userColumns.some(
+    (column) => column.name === "must_change_password"
+  );
+  if (!hasMustChangePassword) {
+    await db.exec(
+      "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0"
+    );
+  }
 }
 
 async function bootstrapAdmin(db: Database): Promise<void> {
@@ -76,12 +91,21 @@ async function bootstrapAdmin(db: Database): Promise<void> {
     return;
   }
 
-  const passwordHash = await hashPassword(config.adminBootstrapPassword);
+  const bootstrapPassword =
+    config.adminBootstrapPassword ?? randomToken(18);
+  const passwordHash = await hashPassword(bootstrapPassword);
   await db.run(
-    "INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')",
+    "INSERT INTO users (username, password_hash, role, must_change_password) VALUES (?, ?, 'admin', 1)",
     config.adminBootstrapUsername,
     passwordHash
   );
+
+  // eslint-disable-next-line no-console
+  console.log(
+    `[bootstrap] admin user "${config.adminBootstrapUsername}" created with temporary password: ${bootstrapPassword}`
+  );
+  // eslint-disable-next-line no-console
+  console.log("[bootstrap] password change is required on first login.");
 }
 
 export async function getDb(): Promise<Database> {
@@ -126,15 +150,29 @@ export async function createUser(input: {
   username: string;
   passwordHash: string;
   role: Role;
+  mustChangePassword?: boolean;
 }): Promise<number> {
   const db = await getDb();
   const res = await db.run(
-    "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+    "INSERT INTO users (username, password_hash, role, must_change_password) VALUES (?, ?, ?, ?)",
     input.username,
     input.passwordHash,
-    input.role
+    input.role,
+    input.mustChangePassword ? 1 : 0
   );
   return res.lastID as number;
+}
+
+export async function updateUserPassword(input: {
+  userId: number;
+  passwordHash: string;
+}): Promise<void> {
+  const db = await getDb();
+  await db.run(
+    "UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
+    input.passwordHash,
+    input.userId
+  );
 }
 
 export async function createApiToken(input: {
@@ -208,7 +246,7 @@ export async function writeCommandLog(input: {
   durationMs?: number;
 }): Promise<void> {
   const db = await getDb();
-  await db.run(
+  const res = await db.run(
     `INSERT INTO command_logs
       (actor_user_id, actor_token_id, actor_username, actor_role, command, response, status, error, duration_ms)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -222,6 +260,20 @@ export async function writeCommandLog(input: {
     input.error ?? null,
     input.durationMs ?? null
   );
+
+  commandLogEvents.emit({
+    id: res.lastID as number,
+    actor_user_id: input.actorUserId,
+    actor_token_id: input.actorTokenId,
+    actor_username: input.actorUsername,
+    actor_role: input.actorRole,
+    command: input.command,
+    response: input.response ?? null,
+    status: input.status,
+    error: input.error ?? null,
+    duration_ms: input.durationMs ?? null,
+    created_at: new Date().toISOString(),
+  });
 }
 
 export async function listCommandLogs(input: {

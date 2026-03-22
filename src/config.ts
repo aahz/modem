@@ -15,7 +15,7 @@ const envSchema = z.object({
     .string()
     .default("AT,ATI,AT+CSQ,AT+CREG?,AT+COPS?,AT+CGATT?"),
   ADMIN_BOOTSTRAP_USERNAME: z.string().default("admin"),
-  ADMIN_BOOTSTRAP_PASSWORD: z.string().min(6).default("admin123"),
+  ADMIN_BOOTSTRAP_PASSWORD: z.string().min(6).optional(),
 });
 
 const env = envSchema.parse(process.env);

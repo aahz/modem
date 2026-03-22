@@ -6,6 +6,7 @@ export class ModemService {
   private port: SerialPort | null = null;
   private queue: Promise<void> = Promise.resolve();
   private lastError: string | null = null;
+  private interactiveSessions = 0;
 
   async connect(): Promise<void> {
     try {
@@ -48,7 +49,62 @@ export class ModemService {
   }
 
   async sendCommand(command: string, timeoutMs = 5000): Promise<SendAtResult> {
+    if (this.interactiveSessions > 0) {
+      throw new Error("Interactive terminal session is active");
+    }
+    await this.ensureConnected();
     return this.enqueue(() => this.executeCommand(command, timeoutMs));
+  }
+
+  async openInteractiveSession(handlers: {
+    onData: (chunk: string) => void;
+    onSystem: (message: string) => void;
+  }): Promise<{
+    write: (chunk: string) => Promise<void>;
+    close: () => void;
+  }> {
+    await this.ensureConnected();
+    const port = this.port!;
+
+    this.interactiveSessions += 1;
+    handlers.onSystem("interactive session opened");
+
+    const onData = (chunk: Buffer): void => {
+      handlers.onData(chunk.toString("utf8"));
+    };
+    const onError = (error: Error): void => {
+      handlers.onSystem(`serial error: ${error.message}`);
+    };
+
+    port.on("data", onData);
+    port.on("error", onError);
+
+    let closed = false;
+    const close = (): void => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      this.interactiveSessions = Math.max(0, this.interactiveSessions - 1);
+      port.off("data", onData);
+      port.off("error", onError);
+      handlers.onSystem("interactive session closed");
+    };
+
+    return {
+      write: async (chunk: string) => {
+        await new Promise<void>((resolve, reject) => {
+          port.write(chunk, (error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve();
+          });
+        });
+      },
+      close,
+    };
   }
 
   private async enqueue<T>(task: () => Promise<T>): Promise<T> {
@@ -132,6 +188,16 @@ export class ModemService {
       response: lines.join("\n"),
       durationMs: Date.now() - startedAt,
     };
+  }
+
+  private async ensureConnected(): Promise<void> {
+    if (this.port?.isOpen) {
+      return;
+    }
+    await this.connect();
+    if (!this.port?.isOpen) {
+      throw new Error("Modem serial port is not connected");
+    }
   }
 }
 
