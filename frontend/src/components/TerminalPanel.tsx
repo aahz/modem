@@ -31,7 +31,7 @@ export function TerminalPanel(props: TerminalPanelProps) {
           </Button>
         </ButtonGroup>
       </Flex>
-      {props.enabled ? <View ref={props.hostRef} id="xterm-host" /> : null}
+      {props.enabled ? <div ref={props.hostRef} id="xterm-host" /> : null}
     </View>
   );
 }
