@@ -16,7 +16,15 @@ export async function api<T>(
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.error ?? `HTTP ${response.status}`);
+    const errorText =
+      typeof body.error === "string" ? body.error : `HTTP ${response.status}`;
+    const details =
+      typeof body.details === "string"
+        ? body.details
+        : typeof body.code === "string"
+          ? body.code
+          : "";
+    throw new Error(details ? `${errorText}: ${details}` : errorText);
   }
 
   if (response.status === 204) {

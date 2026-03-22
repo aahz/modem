@@ -24,6 +24,12 @@ export function App() {
   const [atCommand, setAtCommand] = useState("AT+CSQ");
   const [atTimeout, setAtTimeout] = useState("5000");
   const [atResponse, setAtResponse] = useState("");
+  const [modemStatus, setModemStatus] = useState<{
+    connected: boolean;
+    path: string;
+    baudRate: number;
+    lastError: string | null;
+  } | null>(null);
 
   const [logs, setLogs] = useState<CommandLog[]>([]);
   const [logLimit, setLogLimit] = useState("100");
@@ -134,6 +140,16 @@ export function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function refreshModemStatus(activeToken: string): Promise<void> {
+    const status = await api<{
+      connected: boolean;
+      path: string;
+      baudRate: number;
+      lastError: string | null;
+    }>("/modem/status", activeToken);
+    setModemStatus(status);
   }
 
   async function issueToken(): Promise<void> {
@@ -267,6 +283,7 @@ export function App() {
       return;
     }
     loadLogs(token).catch(() => undefined);
+    refreshModemStatus(token).catch(() => undefined);
     if (user.role === "admin") {
       loadTokens(token).catch(() => undefined);
     }
@@ -343,6 +360,15 @@ export function App() {
                   onResponseChange={setAtResponse}
                   onSend={handleSendAt}
                 />
+                {modemStatus ? (
+                  <View backgroundColor="gray-75" padding="size-150" borderRadius="medium">
+                    <Text>
+                      Modem: {modemStatus.connected ? "connected" : "disconnected"} | path{" "}
+                      {modemStatus.path} | baud {modemStatus.baudRate}
+                      {modemStatus.lastError ? ` | lastError: ${modemStatus.lastError}` : ""}
+                    </Text>
+                  </View>
+                ) : null}
 
                 <LogsPanel
                   logs={logs}

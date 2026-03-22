@@ -9,19 +9,22 @@ import {
 
 export const logRouter = Router();
 
-logRouter.use(authenticate, requirePasswordChanged);
+logRouter.get(
+  "/logs",
+  authenticate,
+  requirePasswordChanged,
+  async (req, res) => {
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 100), 1), 500);
+    const principal = req.principal!;
 
-logRouter.get("/logs", async (req, res) => {
-  const limit = Math.min(Math.max(Number(req.query.limit ?? 100), 1), 500);
-  const principal = req.principal!;
+    const logs =
+      principal.role === "admin"
+        ? await listCommandLogs({ limit })
+        : await listCommandLogs({ limit, actorUserId: principal.id });
 
-  const logs =
-    principal.role === "admin"
-      ? await listCommandLogs({ limit })
-      : await listCommandLogs({ limit, actorUserId: principal.id });
-
-  res.json({ items: logs });
-});
+    res.json({ items: logs });
+  }
+);
 
 logRouter.get("/logs/stream", async (req, res) => {
   const queryToken = typeof req.query.token === "string" ? req.query.token : null;

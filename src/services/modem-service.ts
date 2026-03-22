@@ -133,12 +133,14 @@ export class ModemService {
     const startedAt = Date.now();
     let rawBuffer = "";
     const lines: string[] = [];
+    let hasData = false;
 
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         cleanup();
         reject(new Error(`AT command timeout (${timeoutMs}ms)`));
       }, timeoutMs);
+      let idleTimer: NodeJS.Timeout | null = null;
 
       const finalizeIfTerminal = (line: string): void => {
         const normalized = line.trim().toUpperCase();
@@ -148,18 +150,36 @@ export class ModemService {
         }
       };
 
-      const onData = (chunk: Buffer): void => {
-        rawBuffer += chunk.toString("utf8");
-        const split = rawBuffer.split(/\r?\n/);
+      const scheduleIdleResolve = (): void => {
+        if (idleTimer) {
+          clearTimeout(idleTimer);
+        }
+        idleTimer = setTimeout(() => {
+          if (hasData) {
+            cleanup();
+            resolve();
+          }
+        }, 800);
+      };
+
+      const flushChunkLines = (): void => {
+        const split = rawBuffer.split(/\r\n|\n|\r/);
         rawBuffer = split.pop() ?? "";
         for (const rawLine of split) {
           const line = rawLine.trim();
           if (!line) {
             continue;
           }
+          hasData = true;
           lines.push(line);
           finalizeIfTerminal(line);
         }
+      };
+
+      const onData = (chunk: Buffer): void => {
+        rawBuffer += chunk.toString("utf8");
+        flushChunkLines();
+        scheduleIdleResolve();
       };
 
       const onError = (error: Error): void => {
@@ -169,6 +189,10 @@ export class ModemService {
 
       const cleanup = (): void => {
         clearTimeout(timeout);
+        if (idleTimer) {
+          clearTimeout(idleTimer);
+          idleTimer = null;
+        }
         port.off("data", onData);
         port.off("error", onError);
       };
@@ -180,7 +204,14 @@ export class ModemService {
         if (error) {
           cleanup();
           reject(error);
+          return;
         }
+        port.drain((drainError) => {
+          if (drainError) {
+            cleanup();
+            reject(drainError);
+          }
+        });
       });
     });
 
