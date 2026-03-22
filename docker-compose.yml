@@ -1,0 +1,24 @@
+services:
+  modem:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: modem
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      DB_PATH: /app/data/modem.sqlite
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
+      SERIAL_PATH: ${MODEM_DEVICE:-/dev/ttyACM0}
+      BAUD_RATE: ${BAUD_RATE:-9600}
+      USER_ALLOWED_COMMANDS: ${USER_ALLOWED_COMMANDS:-AT,ATI,AT+CSQ,AT+CREG?,AT+COPS?,AT+CGATT?}
+      ADMIN_BOOTSTRAP_USERNAME: ${ADMIN_BOOTSTRAP_USERNAME:-root}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-q1a2z3}
+    volumes:
+      - ./data:/app/data
+    devices:
+      - "${MODEM_DEVICE:-/dev/ttyACM0}:${SERIAL_PATH:-/dev/ttyACM0}"

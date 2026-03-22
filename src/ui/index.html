@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Modem Control Panel</title>
+    <style>
+      :root {
+        --bg: #f6f7fb;
+        --card: #ffffff;
+        --text: #1b2430;
+        --muted: #5b6574;
+        --accent: #0d6efd;
+        --border: #dbe1ea;
+      }
+      body {
+        margin: 0;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        color: var(--text);
+        background: radial-gradient(circle at top left, #e8efff, #f6f7fb 40%);
+      }
+      .wrap {
+        max-width: 1100px;
+        margin: 24px auto 40px;
+        padding: 0 16px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      h1,
+      h2 {
+        margin: 0 0 12px;
+      }
+      h2 {
+        font-size: 1.1rem;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      input,
+      select,
+      button,
+      textarea {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 14px;
+      }
+      input,
+      select,
+      textarea {
+        min-width: 180px;
+        flex: 1;
+      }
+      button {
+        cursor: pointer;
+        background: var(--accent);
+        color: #fff;
+        border: none;
+      }
+      button.secondary {
+        background: #6c757d;
+      }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #f3f6fb;
+        border-radius: 8px;
+        padding: 12px;
+        margin: 0;
+        min-height: 48px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th,
+      td {
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        padding: 8px;
+      }
+      .hidden {
+        display: none;
+      }
+      .topline {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <div class="topline">
+          <h1>Modem Control Panel</h1>
+          <div>
+            <span id="whoami" class="muted">Не авторизован</span>
+            <button id="logoutBtn" class="secondary hidden">Выйти</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="loginCard" class="card">
+        <h2>Вход</h2>
+        <div class="row">
+          <input id="username" placeholder="Username" />
+          <input id="password" placeholder="Password" type="password" />
+          <button id="loginBtn">Login</button>
+        </div>
+        <p class="muted">Используйте bootstrap-админа из `.env` при первом запуске.</p>
+      </div>
+
+      <div id="atCard" class="card hidden">
+        <h2>AT команды</h2>
+        <div class="row">
+          <input id="atCommand" placeholder="AT+CSQ" />
+          <input id="timeoutMs" placeholder="Timeout ms (5000)" type="number" />
+          <button id="sendAtBtn">Отправить</button>
+        </div>
+        <pre id="atResult"></pre>
+      </div>
+
+      <div id="tokenCard" class="card hidden">
+        <h2>API токены (admin)</h2>
+        <div class="row">
+          <input id="tokenName" placeholder="Token name" />
+          <select id="tokenRole">
+            <option value="user">user</option>
+            <option value="admin">admin</option>
+          </select>
+          <button id="createTokenBtn">Создать токен</button>
+        </div>
+        <pre id="tokenCreateResult"></pre>
+        <div class="row">
+          <button id="refreshTokensBtn" class="secondary">Обновить список токенов</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Role</th>
+              <th>Created</th>
+              <th>Last used</th>
+              <th>Revoked</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tokenTable"></tbody>
+        </table>
+      </div>
+
+      <div id="logCard" class="card hidden">
+        <h2>Логи команд</h2>
+        <div class="row">
+          <input id="logLimit" type="number" value="50" />
+          <button id="refreshLogsBtn" class="secondary">Обновить логи</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>User</th>
+              <th>Role</th>
+              <th>Command</th>
+              <th>Status</th>
+              <th>Duration</th>
+            </tr>
+          </thead>
+          <tbody id="logTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      const state = {
+        token: localStorage.getItem("jwt") || "",
+        user: null,
+      };
+
+      const ui = {
+        whoami: document.getElementById("whoami"),
+        logoutBtn: document.getElementById("logoutBtn"),
+        loginCard: document.getElementById("loginCard"),
+        atCard: document.getElementById("atCard"),
+        tokenCard: document.getElementById("tokenCard"),
+        logCard: document.getElementById("logCard"),
+        username: document.getElementById("username"),
+        password: document.getElementById("password"),
+        loginBtn: document.getElementById("loginBtn"),
+        atCommand: document.getElementById("atCommand"),
+        timeoutMs: document.getElementById("timeoutMs"),
+        sendAtBtn: document.getElementById("sendAtBtn"),
+        atResult: document.getElementById("atResult"),
+        tokenName: document.getElementById("tokenName"),
+        tokenRole: document.getElementById("tokenRole"),
+        createTokenBtn: document.getElementById("createTokenBtn"),
+        tokenCreateResult: document.getElementById("tokenCreateResult"),
+        refreshTokensBtn: document.getElementById("refreshTokensBtn"),
+        tokenTable: document.getElementById("tokenTable"),
+        logLimit: document.getElementById("logLimit"),
+        refreshLogsBtn: document.getElementById("refreshLogsBtn"),
+        logTable: document.getElementById("logTable"),
+      };
+
+      async function api(path, options = {}) {
+        const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+        if (state.token) {
+          headers.Authorization = `Bearer ${state.token}`;
+        }
+        const res = await fetch(`/api/v1${path}`, { ...options, headers });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || `HTTP ${res.status}`);
+        }
+        if (res.status === 204) return null;
+        return res.json();
+      }
+
+      function renderSession() {
+        const loggedIn = Boolean(state.user);
+        ui.loginCard.classList.toggle("hidden", loggedIn);
+        ui.atCard.classList.toggle("hidden", !loggedIn);
+        ui.logCard.classList.toggle("hidden", !loggedIn);
+        ui.logoutBtn.classList.toggle("hidden", !loggedIn);
+        ui.tokenCard.classList.toggle("hidden", !loggedIn || state.user.role !== "admin");
+
+        ui.whoami.textContent = loggedIn
+          ? `${state.user.username} (${state.user.role})`
+          : "Не авторизован";
+      }
+
+      async function loadMe() {
+        if (!state.token) {
+          state.user = null;
+          renderSession();
+          return;
+        }
+        try {
+          const res = await api("/auth/me");
+          state.user = res.user;
+        } catch {
+          localStorage.removeItem("jwt");
+          state.token = "";
+          state.user = null;
+        }
+        renderSession();
+      }
+
+      async function login() {
+        const res = await api("/auth/login", {
+          method: "POST",
+          body: JSON.stringify({
+            username: ui.username.value,
+            password: ui.password.value,
+          }),
+        });
+        state.token = res.accessToken;
+        localStorage.setItem("jwt", state.token);
+        await loadMe();
+        await refreshLogs();
+        if (state.user.role === "admin") {
+          await refreshTokens();
+        }
+      }
+
+      async function sendAt() {
+        const body = {
+          command: ui.atCommand.value,
+          timeoutMs: ui.timeoutMs.value ? Number(ui.timeoutMs.value) : undefined,
+        };
+        const res = await api("/at/send", { method: "POST", body: JSON.stringify(body) });
+        ui.atResult.textContent = JSON.stringify(res, null, 2);
+        await refreshLogs();
+      }
+
+      async function createToken() {
+        const res = await api("/tokens", {
+          method: "POST",
+          body: JSON.stringify({
+            name: ui.tokenName.value,
+            role: ui.tokenRole.value,
+          }),
+        });
+        ui.tokenCreateResult.textContent = `Скопируйте токен сейчас, повторно он не показывается:\n${res.token}`;
+        await refreshTokens();
+      }
+
+      async function revokeToken(id) {
+        await api(`/tokens/${id}/revoke`, { method: "POST" });
+        await refreshTokens();
+      }
+
+      async function refreshTokens() {
+        if (!state.user || state.user.role !== "admin") return;
+        const res = await api("/tokens");
+        ui.tokenTable.innerHTML = "";
+        for (const token of res.items) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${token.id}</td>
+            <td>${token.name}</td>
+            <td>${token.role}</td>
+            <td>${token.created_at || ""}</td>
+            <td>${token.last_used_at || ""}</td>
+            <td>${token.revoked_at || ""}</td>
+            <td>${token.revoked_at ? "" : `<button data-revoke="${token.id}" class="secondary">Revoke</button>`}</td>
+          `;
+          ui.tokenTable.appendChild(tr);
+        }
+        ui.tokenTable.querySelectorAll("button[data-revoke]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            await revokeToken(btn.getAttribute("data-revoke"));
+          });
+        });
+      }
+
+      async function refreshLogs() {
+        if (!state.user) return;
+        const limit = Number(ui.logLimit.value || "50");
+        const res = await api(`/logs?limit=${encodeURIComponent(limit)}`);
+        ui.logTable.innerHTML = "";
+        for (const log of res.items) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${log.created_at}</td>
+            <td>${log.actor_username}</td>
+            <td>${log.actor_role}</td>
+            <td><code>${log.command}</code></td>
+            <td>${log.status}</td>
+            <td>${log.duration_ms ?? ""}</td>
+          `;
+          ui.logTable.appendChild(tr);
+        }
+      }
+
+      ui.loginBtn.addEventListener("click", () => login().catch((e) => alert(e.message)));
+      ui.sendAtBtn.addEventListener("click", () => sendAt().catch((e) => alert(e.message)));
+      ui.createTokenBtn.addEventListener("click", () =>
+        createToken().catch((e) => alert(e.message))
+      );
+      ui.refreshTokensBtn.addEventListener("click", () =>
+        refreshTokens().catch((e) => alert(e.message))
+      );
+      ui.refreshLogsBtn.addEventListener("click", () =>
+        refreshLogs().catch((e) => alert(e.message))
+      );
+      ui.logoutBtn.addEventListener("click", () => {
+        localStorage.removeItem("jwt");
+        state.token = "";
+        state.user = null;
+        renderSession();
+      });
+
+      loadMe().then(() => refreshLogs().catch(() => {}));
+    </script>
+  </body>
+</html>

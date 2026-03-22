@@ -57,6 +57,86 @@ ADMIN_BOOTSTRAP_PASSWORD=strong-password
 docker compose up -d --build
 ```
 
+## Удаленная разработка (сервер с модемом)
+
+Для dev-цикла с hot-reload лучше запускать `docker compose` прямо на удаленном сервере, где физически подключен модем.
+
+1. На сервере `192.168.88.2`:
+- клонировать репозиторий;
+- создать `.env` (или `env_file`) с `MODEM_DEVICE`, `JWT_SECRET` и т.д.
+
+2. Запуск dev-сборки:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d
+```
+
+3. Логи:
+
+```bash
+docker compose -f docker-compose.dev.yml logs -f modem
+```
+
+4. Остановка:
+
+```bash
+docker compose -f docker-compose.dev.yml down
+```
+
+Если хочешь запускать команды с локальной машины, можно использовать `docker context`:
+
+```bash
+docker context create modem-remote --docker "host=ssh://USER@192.168.88.2"
+docker --context modem-remote ps
+```
+
+Важно: для dev-файла используются bind-mount (`./:/app`), поэтому проект должен быть на файловой системе удаленного сервера; с remote daemon bind-монты читаются на стороне сервера, а не локального компьютера.
+
+## Добавление в общий docker-compose
+
+Если у вас уже есть общий `docker-compose.yml`, добавьте сервис `modem` в секцию `services`:
+
+```yaml
+services:
+  modem:
+    image: ghcr.io/aahz/modem:latest
+    build:
+      context: ./modem
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - /opt/modem/.env
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      DB_PATH: /app/data/modem.sqlite
+      JWT_SECRET: ${JWT_SECRET}
+      MODEM_DEVICE: /dev/ttyACM0
+      BAUD_RATE: ${BAUD_RATE:-9600}
+      USER_ALLOWED_COMMANDS: ${USER_ALLOWED_COMMANDS:-AT,ATI,AT+CSQ}
+      ADMIN_BOOTSTRAP_USERNAME: ${ADMIN_BOOTSTRAP_USERNAME:-root}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-q1a2z3}
+    volumes:
+      - ./modem/data:/app/data
+    devices:
+      - "${MODEM_DEVICE:-/dev/ttyACM0}:${SERIAL_PATH:-/dev/ttyACM0}"
+    networks:
+      - modem-network
+
+networks:
+  modem-network:
+    driver: bridge
+```
+
+Ключевые моменты:
+- `context: ./modem` должен указывать на папку проекта этого сервиса.
+- Да, можно читать env с машины, где деплой:
+  - глобально через `.env` рядом с `docker-compose.yml`;
+  - или явно через `env_file` (как в примере: `/opt/stack/env/modem.env`).
+- `devices` обязателен для доступа к USB-модему из контейнера.
+- `./modem/data` (или ваш volume) нужен для сохранения SQLite между рестартами.
+- Если сервис не должен быть доступен снаружи, не публикуйте `ports`, используйте только внутреннюю сеть и reverse proxy.
+
 ## API (основное)
 
 - `POST /api/v1/auth/login`:
@@ -72,6 +152,42 @@ docker compose up -d --build
 - `POST /api/v1/users` (admin)
 
 Все защищенные endpoint'ы требуют `Authorization: Bearer <token>`.
+
+## Сборка image через GitHub Actions
+
+Настроен workflow: `.github/workflows/docker-image.yml`.
+
+- При push в `master` публикуются теги:
+  - `ghcr.io/aahz/modem:latest`
+  - `ghcr.io/aahz/modem:sha-<commit>`
+- При push в `unstable` публикуется только:
+  - `ghcr.io/aahz/modem:unstable`
+- При push тега `vX.Y.Z` (например после `yarn version`) публикуются:
+  - `ghcr.io/aahz/modem:X.Y.Z`
+  - `ghcr.io/aahz/modem:X.Y`
+  - `ghcr.io/aahz/modem:X`
+
+Релиз конкретной версии через `yarn version`:
+
+```bash
+yarn version --patch
+git push origin master --follow-tags
+```
+
+Для `minor`/`major`:
+
+```bash
+yarn version --minor
+yarn version --major
+```
+
+Пример pull:
+
+```bash
+docker pull ghcr.io/aahz/modem:latest
+docker pull ghcr.io/aahz/modem:unstable
+docker pull ghcr.io/aahz/modem:1.2.3
+```
 
 ## Примечания по безопасности
 
