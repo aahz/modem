@@ -1,4 +1,11 @@
-import { Flex, Heading, ProgressCircle, Text, View } from "@adobe/react-spectrum";
+import {
+  Button,
+  Flex,
+  Heading,
+  ProgressCircle,
+  Text,
+  View,
+} from "@adobe/react-spectrum";
 import { useEffect, useRef, useState } from "react";
 import { IDisposable, Terminal as XtermTerminal } from "xterm";
 import { api } from "./lib/api";
