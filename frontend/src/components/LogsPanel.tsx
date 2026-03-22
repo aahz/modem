@@ -19,9 +19,9 @@ interface LogsPanelProps {
 
 export function LogsPanel({ logs, limit, onLimitChange, onRefresh }: LogsPanelProps) {
   return (
-    <View backgroundColor="chartreuse-100" padding="size-200" borderRadius="medium">
+    <View backgroundColor="chartreuse-400" padding="size-200" borderRadius="medium">
       <Flex justifyContent="space-between" alignItems="center" gap="size-150" wrap>
-        <Heading level={3}>Logs (live)</Heading>
+        <Heading level={3}>Logs</Heading>
         <ButtonGroup>
           <ActionButton onPress={onRefresh}>
             <Text>Refresh</Text>

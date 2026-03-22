@@ -30,6 +30,7 @@ export function App() {
     baudRate: number;
     lastError: string | null;
   } | null>(null);
+  const [atModeReady, setAtModeReady] = useState<boolean | null>(null);
 
   const [logs, setLogs] = useState<CommandLog[]>([]);
   const [logLimit, setLogLimit] = useState("100");
@@ -151,6 +152,31 @@ export function App() {
       lastError: string | null;
     }>("/modem/status", activeToken);
     setModemStatus(status);
+  }
+
+  async function checkModemMode(activeToken: string): Promise<void> {
+    const res = await api<{ atModeReady: boolean }>("/modem/mode", activeToken);
+    setAtModeReady(res.atModeReady);
+  }
+
+  async function recoverModemMode(activeToken: string): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api<{ ok: boolean; message: string }>(
+        "/modem/recover-mode",
+        activeToken,
+        { method: "POST" }
+      );
+      setAtModeReady(res.ok);
+      setAtResponse((prev) =>
+        `${prev ? `${prev}\n\n` : ""}[mode] ${res.message}`
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function issueToken(): Promise<void> {
@@ -297,6 +323,7 @@ export function App() {
     }
     loadLogs(token).catch(() => undefined);
     refreshModemStatus(token).catch(() => undefined);
+    checkModemMode(token).catch(() => undefined);
     if (user.role === "admin") {
       loadTokens(token).catch(() => undefined);
     }
@@ -377,11 +404,37 @@ export function App() {
                 />
                 {modemStatus ? (
                   <View backgroundColor="gray-75" padding="size-150" borderRadius="medium">
-                    <Text>
-                      Modem: {modemStatus.connected ? "connected" : "disconnected"} | path{" "}
-                      {modemStatus.path} | baud {modemStatus.baudRate}
-                      {modemStatus.lastError ? ` | lastError: ${modemStatus.lastError}` : ""}
-                    </Text>
+                    <Flex direction="column" gap="size-100">
+                      <Text>
+                        Modem: {modemStatus.connected ? "connected" : "disconnected"} | path{" "}
+                        {modemStatus.path} | baud {modemStatus.baudRate}
+                        {modemStatus.lastError
+                          ? ` | lastError: ${modemStatus.lastError}`
+                          : ""}
+                      </Text>
+                      <Flex alignItems="center" gap="size-100" wrap>
+                        <Text>
+                          AT mode:{" "}
+                          {atModeReady === null
+                            ? "unknown"
+                            : atModeReady
+                              ? "ready"
+                              : "not ready"}
+                        </Text>
+                        <Button
+                          variant="secondary"
+                          onPress={() => checkModemMode(token)}
+                        >
+                          Check
+                        </Button>
+                        <Button
+                          variant="accent"
+                          onPress={() => recoverModemMode(token)}
+                        >
+                          Recover
+                        </Button>
+                      </Flex>
+                    </Flex>
                   </View>
                 ) : null}
 

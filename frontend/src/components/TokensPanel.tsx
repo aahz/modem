@@ -26,7 +26,7 @@ interface TokensPanelProps {
 
 export function TokensPanel(props: TokensPanelProps) {
   return (
-    <View backgroundColor="seafoam-100" padding="size-200" borderRadius="medium">
+    <View backgroundColor="seafoam-400" padding="size-200" borderRadius="medium">
       <Heading level={3}>API Tokens</Heading>
       <Flex gap="size-150" wrap>
         <TextField label="Name" value={props.newTokenName} onChange={props.onNameChange} />
