@@ -107,6 +107,53 @@ export class ModemService {
     };
   }
 
+  async ensureAtCommandMode(): Promise<{
+    ok: boolean;
+    message: string;
+  }> {
+    await this.ensureConnected();
+
+    const alreadyInAtMode = await this.enqueue(async () =>
+      this.probeAtMode(1400)
+    );
+    if (alreadyInAtMode) {
+      return { ok: true, message: "AT command mode is ready" };
+    }
+
+    await this.sleep(1100);
+    await this.writeRaw("+++");
+    await this.sleep(1100);
+
+    const switchedToAtMode = await this.enqueue(async () =>
+      this.probeAtMode(1600)
+    );
+    if (switchedToAtMode) {
+      await this.bestEffortInitSequence();
+      return {
+        ok: true,
+        message: "Switched modem to AT command mode via +++",
+      };
+    }
+
+    await this.bestEffortInitSequence();
+    const recoveredByInitSequence = await this.enqueue(async () =>
+      this.probeAtMode(1800)
+    );
+    if (recoveredByInitSequence) {
+      return {
+        ok: true,
+        message:
+          "Recovered AT command mode via modem init sequence (ATH/ATZ/FCLASS)",
+      };
+    }
+
+    return {
+      ok: false,
+      message:
+        "Could not switch modem to AT mode; modem may still be in binary data mode",
+    };
+  }
+
   private async enqueue<T>(task: () => Promise<T>): Promise<T> {
     const run = this.queue.then(task, task);
     this.queue = run.then(
@@ -229,6 +276,61 @@ export class ModemService {
     if (!this.port?.isOpen) {
       throw new Error("Modem serial port is not connected");
     }
+  }
+
+  private async probeAtMode(timeoutMs: number): Promise<boolean> {
+    try {
+      const res = await this.executeCommand("AT", timeoutMs);
+      return /\bOK\b/i.test(res.response);
+    } catch {
+      return false;
+    }
+  }
+
+  private async bestEffortInitSequence(): Promise<void> {
+    await this.enqueue(async () => {
+      await this.bestEffortCommand("ATH", 1800);
+      await this.bestEffortCommand("ATZ", 2500);
+      await this.bestEffortCommand("AT+FCLASS=0", 1800);
+      await this.bestEffortCommand("ATE1", 1200);
+    });
+  }
+
+  private async bestEffortCommand(
+    command: string,
+    timeoutMs: number
+  ): Promise<void> {
+    try {
+      await this.executeCommand(command, timeoutMs);
+    } catch {
+      // ignore best-effort init errors
+    }
+  }
+
+  private async writeRaw(chunk: string): Promise<void> {
+    const port = this.port;
+    if (!port || !port.isOpen) {
+      throw new Error("Modem serial port is not connected");
+    }
+    await new Promise<void>((resolve, reject) => {
+      port.write(chunk, (error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        port.drain((drainError) => {
+          if (drainError) {
+            reject(drainError);
+            return;
+          }
+          resolve();
+        });
+      });
+    });
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    await new Promise<void>((resolve) => setTimeout(resolve, ms));
   }
 }
 

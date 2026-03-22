@@ -150,14 +150,28 @@ async function bootstrap(): Promise<void> {
 
       wsServer.handleUpgrade(request, socket, head, async (ws: WebSocket) => {
         try {
+          const sendSafe = (payload: Record<string, unknown>) => {
+            if (ws.readyState !== WebSocket.OPEN) {
+              return;
+            }
+            try {
+              ws.send(JSON.stringify(payload));
+            } catch {
+              // ignore socket send errors for already-closing clients
+            }
+          };
+
+          const atMode = await modemService.ensureAtCommandMode();
           const session = await modemService.openInteractiveSession({
             onData: (chunk) => {
-              ws.send(JSON.stringify({ type: "data", data: chunk }));
+              sendSafe({ type: "data", data: chunk });
             },
             onSystem: (message) => {
-              ws.send(JSON.stringify({ type: "system", data: message }));
+              sendSafe({ type: "system", data: message });
             },
           });
+
+          sendSafe({ type: "system", data: atMode.message });
 
           ws.on("message", async (data: RawData) => {
             try {
@@ -165,13 +179,10 @@ async function bootstrap(): Promise<void> {
                 typeof data === "string" ? data : data.toString("utf8");
               await session.write(chunk);
             } catch (error) {
-              ws.send(
-                JSON.stringify({
-                  type: "system",
-                  data:
-                    error instanceof Error ? error.message : String(error),
-                })
-              );
+              sendSafe({
+                type: "system",
+                data: error instanceof Error ? error.message : String(error),
+              });
             }
           });
 
