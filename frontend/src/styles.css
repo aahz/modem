@@ -11,14 +11,6 @@ body {
   font-size: 15px;
 }
 
-#xterm-host {
-  margin-top: 12px;
-  height: 420px;
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid #2f4c64;
-}
-
 .app-shell {
   max-width: 1200px;
   margin: 0 auto;
@@ -44,17 +36,10 @@ body {
     flex-basis: 100%;
   }
 
-  #xterm-host {
-    height: 320px;
-  }
 }
 
 @media (max-width: 560px) {
   body {
     font-size: 14px;
-  }
-
-  #xterm-host {
-    height: 250px;
   }
 }

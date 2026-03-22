@@ -1,15 +1,15 @@
 import fs from "fs";
 import express from "express";
-import { createServer } from "http";
 import morgan from "morgan";
 import path from "path";
+import swaggerUi from "swagger-ui-express";
 import { fileURLToPath } from "url";
-import { RawData, WebSocket, WebSocketServer } from "ws";
 import { config } from "./config.js";
 import { getDb } from "./database.js";
 import { commandLogEvents, CommandLogEvent } from "./log-events.js";
 import { authenticateToken } from "./middleware/auth.js";
 import { createRateLimit } from "./middleware/rate-limit.js";
+import { openApiDocument } from "./openapi.js";
 import { atRouter } from "./routes/at-routes.js";
 import { authRouter } from "./routes/auth-routes.js";
 import { logRouter } from "./routes/log-routes.js";
@@ -52,6 +52,53 @@ async function bootstrap(): Promise<void> {
       modem: modemService.status(),
     });
   });
+
+  const requireAdminDocsAccess: express.RequestHandler = async (
+    req,
+    res,
+    next
+  ) => {
+    const queryToken =
+      typeof req.query.token === "string" ? req.query.token : null;
+    const authHeader = req.headers.authorization;
+    const headerToken = authHeader?.toLowerCase().startsWith("bearer ")
+      ? authHeader.slice(7)
+      : null;
+    const token = queryToken || headerToken;
+
+    if (!token) {
+      res.status(401).json({ error: "Missing bearer token" });
+      return;
+    }
+
+    try {
+      const principal = await authenticateToken(token);
+      if (!principal) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      if (principal.role !== "admin" || principal.mustChangePassword) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      next();
+    } catch (error) {
+      res.status(401).json({
+        error: "Unauthorized",
+        details: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
+  app.get("/openapi.json", requireAdminDocsAccess, (_req, res) => {
+    res.json(openApiDocument);
+  });
+  app.use(
+    "/docs",
+    requireAdminDocsAccess,
+    ...swaggerUi.serve,
+    swaggerUi.setup(openApiDocument)
+  );
 
   app.get("/api/v1/logs/stream", async (req, res) => {
     const queryToken = typeof req.query.token === "string" ? req.query.token : null;
@@ -119,85 +166,7 @@ async function bootstrap(): Promise<void> {
   app.use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     res.status(500).json({ error: "Unhandled error", details: error.message });
   });
-
-  const server = createServer(app);
-  const wsServer = new WebSocketServer({ noServer: true });
-
-  server.on("upgrade", async (request, socket, head) => {
-    try {
-      const host = request.headers.host ?? "localhost";
-      const url = new URL(request.url ?? "", `http://${host}`);
-      if (url.pathname !== "/ws/modem") {
-        socket.destroy();
-        return;
-      }
-
-      const token = url.searchParams.get("token");
-      if (!token) {
-        socket.destroy();
-        return;
-      }
-
-      const principal = await authenticateToken(token);
-      if (
-        !principal ||
-        principal.role !== "admin" ||
-        principal.mustChangePassword
-      ) {
-        socket.destroy();
-        return;
-      }
-
-      wsServer.handleUpgrade(request, socket, head, async (ws: WebSocket) => {
-        try {
-          const sendSafe = (payload: Record<string, unknown>) => {
-            if (ws.readyState !== WebSocket.OPEN) {
-              return;
-            }
-            try {
-              ws.send(JSON.stringify(payload));
-            } catch {
-              // ignore socket send errors for already-closing clients
-            }
-          };
-
-          const atMode = await modemService.ensureAtCommandMode();
-          const session = await modemService.openInteractiveSession({
-            onData: (chunk) => {
-              sendSafe({ type: "data", data: chunk });
-            },
-            onSystem: (message) => {
-              sendSafe({ type: "system", data: message });
-            },
-          });
-
-          sendSafe({ type: "system", data: atMode.message });
-
-          ws.on("message", async (data: RawData) => {
-            try {
-              const chunk =
-                typeof data === "string" ? data : data.toString("utf8");
-              await session.write(chunk);
-            } catch (error) {
-              sendSafe({
-                type: "system",
-                data: error instanceof Error ? error.message : String(error),
-              });
-            }
-          });
-
-          ws.on("close", () => session.close());
-          ws.on("error", () => session.close());
-        } catch {
-          ws.close();
-        }
-      });
-    } catch {
-      socket.destroy();
-    }
-  });
-
-  server.listen(config.port, () => {
+  app.listen(config.port, () => {
     // eslint-disable-next-line no-console
     console.log(`Server listening on http://localhost:${config.port}`);
   });

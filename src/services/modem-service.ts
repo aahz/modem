@@ -6,7 +6,6 @@ export class ModemService {
   private port: SerialPort | null = null;
   private queue: Promise<void> = Promise.resolve();
   private lastError: string | null = null;
-  private interactiveSessions = 0;
 
   async connect(): Promise<void> {
     try {
@@ -49,65 +48,11 @@ export class ModemService {
   }
 
   async sendCommand(command: string, timeoutMs = 5000): Promise<SendAtResult> {
-    if (this.interactiveSessions > 0) {
-      throw new Error("Interactive terminal session is active");
-    }
     const atMode = await this.ensureAtCommandMode();
     if (!atMode.ok) {
       throw new Error(atMode.message);
     }
     return this.enqueue(() => this.executeCommand(command, timeoutMs));
-  }
-
-  async openInteractiveSession(handlers: {
-    onData: (chunk: string) => void;
-    onSystem: (message: string) => void;
-  }): Promise<{
-    write: (chunk: string) => Promise<void>;
-    close: () => void;
-  }> {
-    await this.ensureConnected();
-    const port = this.port!;
-
-    this.interactiveSessions += 1;
-    handlers.onSystem("interactive session opened");
-
-    const onData = (chunk: Buffer): void => {
-      handlers.onData(chunk.toString("latin1"));
-    };
-    const onError = (error: Error): void => {
-      handlers.onSystem(`serial error: ${error.message}`);
-    };
-
-    port.on("data", onData);
-    port.on("error", onError);
-
-    let closed = false;
-    const close = (): void => {
-      if (closed) {
-        return;
-      }
-      closed = true;
-      this.interactiveSessions = Math.max(0, this.interactiveSessions - 1);
-      port.off("data", onData);
-      port.off("error", onError);
-      handlers.onSystem("interactive session closed");
-    };
-
-    return {
-      write: async (chunk: string) => {
-        await new Promise<void>((resolve, reject) => {
-          port.write(chunk, (error) => {
-            if (error) {
-              reject(error);
-              return;
-            }
-            resolve();
-          });
-        });
-      },
-      close,
-    };
   }
 
   async ensureAtCommandMode(): Promise<{
