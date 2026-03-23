@@ -114,12 +114,8 @@ async function bootstrap(): Promise<void> {
   app.get("/openapi.json", requireAdminDocsAccess, (_req, res) => {
     res.json(openApiDocument);
   });
-  app.use(
-    "/docs",
-    requireAdminDocsAccess,
-    ...swaggerUi.serve,
-    swaggerUi.setup(openApiDocument)
-  );
+  app.use("/docs", ...swaggerUi.serve);
+  app.get("/docs", requireAdminDocsAccess, swaggerUi.setup(openApiDocument));
 
   app.get("/api/v1/logs/stream", async (req, res) => {
     const queryToken = typeof req.query.token === "string" ? req.query.token : null;

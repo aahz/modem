@@ -206,7 +206,7 @@ export class AppStore {
         }),
       });
       runInAction(() => {
-        this.atResponse = `${res.response}\n\n${res.durationMs} ms`;
+        this.atResponse = String(res.response);
       });
     } catch (e) {
       runInAction(() => { this.error = e instanceof Error ? e.message : String(e); });

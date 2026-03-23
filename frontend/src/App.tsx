@@ -1,17 +1,21 @@
-import { Button, ProgressCircle, Text, ToastContainer, ToastQueue } from "@react-spectrum/s2";
+import { Button, ButtonGroup, Content, Heading, IllustratedMessage, Text, ToastContainer, ToastQueue } from "@react-spectrum/s2";
+import { style } from '@react-spectrum/s2/style' with {type: 'macro'};
 import { observer } from "mobx-react-lite";
-import { useEffect } from "react";
-import {style} from '@react-spectrum/s2/style' with {type: 'macro'};
-
+import { useEffect, useState } from "react";
+import { AppHeader } from "./components/AppHeader";
 import { AtCommandsPanel } from "./components/AtCommandsPanel";
+import { AtLogsTablePanel } from "./components/AtLogsTablePanel";
 import { LoginPanel } from "./components/LoginPanel";
-import { LogsPanel } from "./components/LogsPanel";
-import { PasswordPanel } from "./components/PasswordPanel";
-import { SessionBar } from "./components/SessionBar";
+import { PasswordDialog } from "./components/PasswordDialog";
 import { TokensPanel } from "./components/TokensPanel";
 import { appStore } from "./store/app-store";
 
+type PageKey = "home" | "tokens";
+
 export const App = observer(function App() {
+  const [activePage, setActivePage] = useState<PageKey>("home");
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+
   useEffect(() => {
     if (!appStore.token) {
       return;
@@ -34,130 +38,144 @@ export const App = observer(function App() {
     if (!appStore.error) {
       return;
     }
-
-    ToastQueue.negative(appStore.error, {
-      timeout: 5000,
-    });
+    ToastQueue.negative(appStore.error, { timeout: 5000 });
   }, [appStore.error]);
 
-  return (
-    <div className="app-shell" style={{ padding: "24px" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+  useEffect(() => {
+    if (appStore.user?.mustChangePassword) {
+      setPasswordDialogOpen(true);
+    }
+  }, [appStore.user?.mustChangePassword]);
 
-        {appStore.busy ? <ProgressCircle aria-label="busy" isIndeterminate size="S" /> : null}
+  useEffect(() => {
+    if (!appStore.user) {
+      setActivePage("home");
+      setPasswordDialogOpen(false);
+    }
+  }, [appStore.user]);
 
-        {!appStore.user ? (
-          <LoginPanel
-            username={appStore.username}
-            password={appStore.password}
-            onUsernameChange={appStore.setUsername}
-            onPasswordChange={appStore.setPassword}
-            isBusy={appStore.busy}
-            onLogin={appStore.handleLogin}
-          />
-        ) : (
-          <SessionBar user={appStore.user} onLogout={appStore.logout} />
-        )}
-
-        {appStore.user ? (
-          <>
-            <PasswordPanel
-              mustChangePassword={appStore.user.mustChangePassword}
-              currentPassword={appStore.currentPassword}
-              newPassword={appStore.newPassword}
-              onCurrentPasswordChange={appStore.setCurrentPassword}
-              onNewPasswordChange={appStore.setNewPassword}
-              onSubmit={appStore.handleChangePassword}
-            />
-
-            {!appStore.securityLocked ? (
-              <>
-                <AtCommandsPanel
-                  command={appStore.atCommand}
-                  timeoutMs={appStore.atTimeout}
-                  response={appStore.atResponse}
-                  onCommandChange={appStore.setAtCommand}
-                  onTimeoutChange={appStore.setAtTimeout}
-                  onResponseChange={appStore.setAtResponse}
-                  onSend={appStore.handleSendAt}
-                />
-
-                {appStore.modemStatus ? (
-                  <div
-                    style={{
-                      background: "#f3f3f3",
-                      padding: "12px",
-                      borderRadius: "8px",
-                    }}
-                  >
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                      <Text>
-                        Modem: {appStore.modemStatus.connected ? "connected" : "disconnected"} | path{" "}
-                        {appStore.modemStatus.path} | baud {appStore.modemStatus.baudRate}
-                        {appStore.modemStatus.lastError
-                          ? ` | lastError: ${appStore.modemStatus.lastError}`
-                          : ""}
-                      </Text>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <Text>
-                          AT mode:{" "}
-                          {appStore.atModeReady === null
-                            ? "unknown"
-                            : appStore.atModeReady
-                              ? "ready"
-                              : "not ready"}
-                        </Text>
-                        <Button
-                          variant="secondary"
-                          onPress={() => appStore.checkModemMode(appStore.token)}
-                        >
-                          Check
-                        </Button>
-                        <Button
-                          variant="accent"
-                          onPress={() => appStore.recoverModemMode(appStore.token)}
-                        >
-                          Recover
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-
-                <LogsPanel
-                  logs={appStore.logs}
-                  limit={appStore.logLimit}
-                  onLimitChange={appStore.setLogLimit}
-                  onRefresh={() => appStore.loadLogs(appStore.token)}
-                  onCleanup={() => appStore.cleanupLogs(appStore.token)}
-                  canCleanup={appStore.user.role === "admin"}
-                />
-
-                {appStore.user.role === "admin" ? (
-                  <TokensPanel
-                    tokens={appStore.tokens}
-                    newTokenName={appStore.newTokenName}
-                    newTokenRole={appStore.newTokenRole}
-                    lastIssuedToken={appStore.lastIssuedToken}
-                    onNameChange={appStore.setNewTokenName}
-                    onRoleChange={appStore.setNewTokenRole}
-                    onLastTokenChange={appStore.setLastIssuedToken}
-                    onCreateToken={appStore.issueToken}
-                    onRevokeToken={appStore.revokeToken}
-                  />
-                ) : null}
-              </>
-            ) : null}
-          </>
-        ) : null}
+  if (!appStore.user) {
+    return (
+      <div className="app-shell">
+        <LoginPanel
+          username={appStore.username}
+          password={appStore.password}
+          onUsernameChange={appStore.setUsername}
+          onPasswordChange={appStore.setPassword}
+          isBusy={appStore.busy}
+          onLogin={appStore.handleLogin}
+        />
+        <ToastContainer />
       </div>
+    );
+  }
+
+  return (
+    <div className="app-shell">
+      <AppHeader
+        activePage={activePage}
+        user={appStore.user}
+        modemStatus={appStore.modemStatus}
+        atModeReady={appStore.atModeReady}
+        docsToken={appStore.token}
+        isBusy={appStore.busy}
+        onHome={() => setActivePage("home")}
+        onTokens={() => setActivePage("tokens")}
+        onCheckMode={() => appStore.checkModemMode(appStore.token)}
+        onRecoverMode={() => appStore.recoverModemMode(appStore.token)}
+        onChangePassword={() => setPasswordDialogOpen(true)}
+        onLogout={appStore.logout}
+      />
+
+        <main style={{flex: 1, overflow: 'scroll'}}>
+          {appStore.securityLocked
+              ? (
+                <section className={style({display: 'flex', justifyContent: 'center'})}>
+                  <IllustratedMessage size="L">
+                    <Heading>Password update required</Heading>
+                    <Content>Access to modem commands is locked until admin password is changed.</Content>
+                    <ButtonGroup>
+                      <Button variant="accent" onPress={() => setPasswordDialogOpen(true)}>
+                        Open password dialog
+                      </Button>
+                    </ButtonGroup>
+                  </IllustratedMessage>
+                </section>
+              )
+              : (
+                  <>
+                    {activePage === "home" ? (
+                        <>
+                            <AtCommandsPanel
+                                command={appStore.atCommand}
+                                timeoutMs={appStore.atTimeout}
+                                response={appStore.atResponse}
+                                onCommandChange={appStore.setAtCommand}
+                                onTimeoutChange={appStore.setAtTimeout}
+                                onResponseChange={appStore.setAtResponse}
+                                onSend={appStore.handleSendAt}
+                            />
+
+                              <AtLogsTablePanel
+                                  logs={appStore.logs}
+                                  onRefresh={() => appStore.loadLogs(appStore.token)}
+                                  onCleanup={() => appStore.cleanupLogs(appStore.token)}
+                                  canCleanup={appStore.user.role === "admin"}
+                              />
+
+                        </>
+                    ) : null}
+
+                    {activePage === "tokens" && (
+                        <>
+                          {appStore.user.role === "admin"
+                              ? (
+                                  <TokensPanel
+                                      tokens={appStore.tokens}
+                                      newTokenName={appStore.newTokenName}
+                                      newTokenRole={appStore.newTokenRole}
+                                      lastIssuedToken={appStore.lastIssuedToken}
+                                      onNameChange={appStore.setNewTokenName}
+                                      onRoleChange={appStore.setNewTokenRole}
+                                      onLastTokenChange={appStore.setLastIssuedToken}
+                                      onCreateToken={appStore.issueToken}
+                                      onRevokeToken={appStore.revokeToken}
+                                  />
+                              )
+                              : (
+                                  <section className={style({display: 'flex', justifyContent: 'center'})}>
+                                    <Heading level={3}>No access</Heading>
+                                    <Text>Token management is available for admins only.</Text>
+                                  </section>
+                              )
+                          }
+                        </>
+                    )}
+                  </>
+              )}
+        </main>
+
+      <PasswordDialog
+        isOpen={passwordDialogOpen}
+        mustChangePassword={appStore.user.mustChangePassword}
+        currentPassword={appStore.currentPassword}
+        newPassword={appStore.newPassword}
+        isBusy={appStore.busy}
+        onCurrentPasswordChange={appStore.setCurrentPassword}
+        onNewPasswordChange={appStore.setNewPassword}
+        onSubmit={async () => {
+          await appStore.handleChangePassword();
+          if (!appStore.user?.mustChangePassword) {
+            setPasswordDialogOpen(false);
+          }
+        }}
+        onClose={() => {
+          if (!appStore.user?.mustChangePassword) {
+            setPasswordDialogOpen(false);
+          }
+        }}
+      />
+
       <ToastContainer />
     </div>
   );

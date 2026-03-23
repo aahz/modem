@@ -1,4 +1,5 @@
-import { Button, Heading, TextArea, TextField } from "@react-spectrum/s2";
+import { ActionButton, TextArea, TextField } from "@react-spectrum/s2";
+import { style } from '@react-spectrum/s2/style' with {type: 'macro'};
 
 interface AtCommandsPanelProps {
   command: string;
@@ -12,34 +13,49 @@ interface AtCommandsPanelProps {
 
 export function AtCommandsPanel(props: AtCommandsPanelProps) {
   return (
-    <div style={{ background: "#e7f2ff", padding: "16px", borderRadius: "8px" }}>
-      <Heading level={3}>AT Commands</Heading>
-      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-        <TextField
-          label="Command"
-          value={props.command}
-          onChange={props.onCommandChange}
-          width="100%"
-          UNSAFE_className="modem-field-wide"
-        />
-        <TextField
-          label="Timeout (ms)"
-          value={props.timeoutMs}
-          onChange={props.onTimeoutChange}
-          width="size-1600"
-          UNSAFE_className="modem-field-compact"
-        />
-        <Button variant="accent" onPress={props.onSend}>
-          Send
-        </Button>
-      </div>
+    <section className={style({display: 'flex', flexDirection: 'column', gap: 16})}>
+      <form
+        className={style({
+          display: 'flex',
+          flexDirection: 'row',
+          justifyContent: 'start',
+          alignItems: 'end',
+          gap: 16,
+      })}
+        onSubmit={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            props.onSend();
+        }}>
+          <div
+              style={{flex: 3}}>
+            <TextField
+              label="Command"
+              value={props.command}
+              onChange={props.onCommandChange}
+            />
+          </div>
+
+          <div
+              style={{flex: 1}}>
+            <TextField
+              label="Timeout"
+              value={props.timeoutMs}
+              onChange={props.onTimeoutChange}
+            />
+          </div>
+
+        <ActionButton type="submit">
+          Execute
+        </ActionButton>
+      </form>
+
       <TextArea
-        label="Response"
         value={props.response}
+        isReadOnly
         onChange={props.onResponseChange}
-        minHeight="size-1200"
-        width="100%"
       />
-    </div>
+    </section>
   );
 }
