@@ -1,4 +1,4 @@
-import { Button, Flex, Heading, Text, TextField, View } from "@adobe/react-spectrum";
+import { Button, Heading, Text, TextField } from "@react-spectrum/s2";
 
 interface PasswordPanelProps {
   mustChangePassword: boolean;
@@ -11,7 +11,7 @@ interface PasswordPanelProps {
 
 export function PasswordPanel(props: PasswordPanelProps) {
   return (
-    <View backgroundColor="yellow-100" padding="size-200" borderRadius="medium">
+    <div style={{ background: "#fff8d6", padding: "16px", borderRadius: "8px" }}>
       <Heading level={3}>
         {props.mustChangePassword ? "Смена пароля обязательна" : "Смена пароля"}
       </Heading>
@@ -20,7 +20,7 @@ export function PasswordPanel(props: PasswordPanelProps) {
           ? "Перед работой с модемом смените временный пароль."
           : "Вы можете в любой момент сменить пароль от аккаунта."}
       </Text>
-      <Flex gap="size-150" wrap marginTop="size-150">
+      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "12px" }}>
         <TextField
           label="Current password"
           type="password"
@@ -36,7 +36,7 @@ export function PasswordPanel(props: PasswordPanelProps) {
         <Button variant="accent" onPress={props.onSubmit}>
           Change password
         </Button>
-      </Flex>
-    </View>
+      </div>
+    </div>
   );
 }

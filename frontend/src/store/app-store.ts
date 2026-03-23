@@ -72,6 +72,32 @@ export class AppStore {
     runInAction(() => { this.logs = res.items; });
   }
 
+  async cleanupLogs(activeToken: string): Promise<void> {
+    this.busy = true;
+    this.error = null;
+    try {
+      const res = await api<{ deleted: number; retentionDays: number }>(
+        "/logs/cleanup",
+        activeToken,
+        { method: "POST" }
+      );
+      runInAction(() => {
+        this.atResponse =
+          `${this.atResponse ? `${this.atResponse}\n\n` : ""}` +
+          `[logs] deleted ${res.deleted} rows older than ${res.retentionDays} days`;
+      });
+      await this.loadLogs(activeToken);
+    } catch (e) {
+      runInAction(() => {
+        this.error = e instanceof Error ? e.message : String(e);
+      });
+    } finally {
+      runInAction(() => {
+        this.busy = false;
+      });
+    }
+  }
+
   async loadTokens(activeToken: string): Promise<void> {
     if (this.user?.role !== "admin") {
       return;

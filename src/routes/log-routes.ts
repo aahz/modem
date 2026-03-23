@@ -1,10 +1,12 @@
 import { Router } from "express";
-import { listCommandLogs } from "../database.js";
+import { config } from "../config.js";
+import { cleanupOldCommandLogs, listCommandLogs } from "../database.js";
 import { commandLogEvents, CommandLogEvent } from "../log-events.js";
 import {
   authenticate,
   authenticateToken,
   requirePasswordChanged,
+  requireRole,
 } from "../middleware/auth.js";
 
 export const logRouter = Router();
@@ -23,6 +25,20 @@ logRouter.get(
         : await listCommandLogs({ limit, actorUserId: principal.id });
 
     res.json({ items: logs });
+  }
+);
+
+logRouter.post(
+  "/logs/cleanup",
+  authenticate,
+  requirePasswordChanged,
+  requireRole("admin"),
+  async (_req, res) => {
+    const deleted = await cleanupOldCommandLogs(config.logRetentionDays);
+    res.json({
+      deleted,
+      retentionDays: config.logRetentionDays,
+    });
   }
 );
 

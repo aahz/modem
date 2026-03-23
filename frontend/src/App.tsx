@@ -1,6 +1,8 @@
-import { Button, Flex, Heading, ProgressCircle, Text, View } from "@adobe/react-spectrum";
+import { Button, ProgressCircle, Text, ToastContainer, ToastQueue } from "@react-spectrum/s2";
 import { observer } from "mobx-react-lite";
 import { useEffect } from "react";
+import {style} from '@react-spectrum/s2/style' with {type: 'macro'};
+
 import { AtCommandsPanel } from "./components/AtCommandsPanel";
 import { LoginPanel } from "./components/LoginPanel";
 import { LogsPanel } from "./components/LogsPanel";
@@ -28,14 +30,20 @@ export const App = observer(function App() {
     return () => appStore.stopLogsStream();
   }, [appStore.token, appStore.user, appStore.securityLocked, appStore.logLimit]);
 
-  return (
-    <View padding="size-300" UNSAFE_className="app-shell">
-      <Flex direction="column" gap="size-200">
-        <Heading level={2}>Modem Control Console</Heading>
+  useEffect(() => {
+    if (!appStore.error) {
+      return;
+    }
 
-        {appStore.error ? (
-          <Text UNSAFE_style={{ color: "#d12e2e" }}>{appStore.error}</Text>
-        ) : null}
+    ToastQueue.negative(appStore.error, {
+      timeout: 5000,
+    });
+  }, [appStore.error]);
+
+  return (
+    <div className="app-shell" style={{ padding: "24px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+
         {appStore.busy ? <ProgressCircle aria-label="busy" isIndeterminate size="S" /> : null}
 
         {!appStore.user ? (
@@ -44,6 +52,7 @@ export const App = observer(function App() {
             password={appStore.password}
             onUsernameChange={appStore.setUsername}
             onPasswordChange={appStore.setPassword}
+            isBusy={appStore.busy}
             onLogin={appStore.handleLogin}
           />
         ) : (
@@ -74,8 +83,14 @@ export const App = observer(function App() {
                 />
 
                 {appStore.modemStatus ? (
-                  <View backgroundColor="gray-75" padding="size-150" borderRadius="medium">
-                    <Flex direction="column" gap="size-100">
+                  <div
+                    style={{
+                      background: "#f3f3f3",
+                      padding: "12px",
+                      borderRadius: "8px",
+                    }}
+                  >
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                       <Text>
                         Modem: {appStore.modemStatus.connected ? "connected" : "disconnected"} | path{" "}
                         {appStore.modemStatus.path} | baud {appStore.modemStatus.baudRate}
@@ -83,7 +98,14 @@ export const App = observer(function App() {
                           ? ` | lastError: ${appStore.modemStatus.lastError}`
                           : ""}
                       </Text>
-                      <Flex alignItems="center" gap="size-100" wrap>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          flexWrap: "wrap",
+                        }}
+                      >
                         <Text>
                           AT mode:{" "}
                           {appStore.atModeReady === null
@@ -104,9 +126,9 @@ export const App = observer(function App() {
                         >
                           Recover
                         </Button>
-                      </Flex>
-                    </Flex>
-                  </View>
+                      </div>
+                    </div>
+                  </div>
                 ) : null}
 
                 <LogsPanel
@@ -114,6 +136,8 @@ export const App = observer(function App() {
                   limit={appStore.logLimit}
                   onLimitChange={appStore.setLogLimit}
                   onRefresh={() => appStore.loadLogs(appStore.token)}
+                  onCleanup={() => appStore.cleanupLogs(appStore.token)}
+                  canCleanup={appStore.user.role === "admin"}
                 />
 
                 {appStore.user.role === "admin" ? (
@@ -133,7 +157,8 @@ export const App = observer(function App() {
             ) : null}
           </>
         ) : null}
-      </Flex>
-    </View>
+      </div>
+      <ToastContainer />
+    </div>
   );
 });

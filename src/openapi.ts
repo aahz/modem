@@ -196,6 +196,14 @@ export const openApiDocument = {
         },
         required: ["items"],
       },
+      LogsCleanupResponse: {
+        type: "object",
+        properties: {
+          deleted: { type: "integer", example: 120 },
+          retentionDays: { type: "integer", example: 30 },
+        },
+        required: ["deleted", "retentionDays"],
+      },
       ApiTokenEntry: {
         type: "object",
         properties: {
@@ -563,6 +571,31 @@ export const openApiDocument = {
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/LogsResponse" },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/v1/logs/cleanup": {
+      post: {
+        tags: ["Logs"],
+        summary: "Delete old logs by retention policy (admin only)",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "Cleanup result",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/LogsCleanupResponse" },
+              },
+            },
+          },
+          "403": {
+            description: "Forbidden",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
               },
             },
           },

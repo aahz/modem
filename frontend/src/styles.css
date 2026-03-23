@@ -2,44 +2,7 @@ html,
 body,
 #root {
   margin: 0;
+  width: 100%;
   min-height: 100%;
   height: 100%;
-}
-
-body {
-  background: radial-gradient(circle at 10% 10%, #e3f4ff 0%, #f4f7fb 42%, #eef2f7 100%);
-  font-size: 15px;
-}
-
-.app-shell {
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.modem-field-wide {
-  min-width: 480px;
-  flex: 1 1 520px;
-}
-
-.modem-field-compact {
-  min-width: 140px;
-}
-
-@media (max-width: 900px) {
-  .app-shell {
-    padding: 12px 6px;
-  }
-
-  .modem-field-wide,
-  .modem-field-compact {
-    min-width: 100%;
-    flex-basis: 100%;
-  }
-
-}
-
-@media (max-width: 560px) {
-  body {
-    font-size: 14px;
-  }
 }

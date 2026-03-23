@@ -5,7 +5,7 @@ import path from "path";
 import swaggerUi from "swagger-ui-express";
 import { fileURLToPath } from "url";
 import { config } from "./config.js";
-import { getDb } from "./database.js";
+import { cleanupOldCommandLogs, getDb } from "./database.js";
 import { commandLogEvents, CommandLogEvent } from "./log-events.js";
 import { authenticateToken } from "./middleware/auth.js";
 import { createRateLimit } from "./middleware/rate-limit.js";
@@ -30,6 +30,27 @@ function resolveUiPath(): string {
 async function bootstrap(): Promise<void> {
   await getDb();
   await modemService.connect();
+
+  const runLogsCleanup = async (): Promise<void> => {
+    try {
+      const deleted = await cleanupOldCommandLogs(config.logRetentionDays);
+      if (deleted > 0) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `[maintenance] deleted ${deleted} log rows older than ${config.logRetentionDays} days`
+        );
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "[maintenance] failed to cleanup old logs:",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  };
+  await runLogsCleanup();
+  const cleanupTimer = setInterval(runLogsCleanup, 6 * 60 * 60 * 1000);
+  cleanupTimer.unref();
 
   const app = express();
   app.use(express.json({ limit: "1mb" }));

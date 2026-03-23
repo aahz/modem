@@ -1,4 +1,4 @@
-import { Button, Flex, Heading, TextArea, TextField, View } from "@adobe/react-spectrum";
+import { Button, Heading, TextArea, TextField } from "@react-spectrum/s2";
 
 interface AtCommandsPanelProps {
   command: string;
@@ -12,9 +12,9 @@ interface AtCommandsPanelProps {
 
 export function AtCommandsPanel(props: AtCommandsPanelProps) {
   return (
-    <View backgroundColor="blue-100" padding="size-200" borderRadius="medium">
+    <div style={{ background: "#e7f2ff", padding: "16px", borderRadius: "8px" }}>
       <Heading level={3}>AT Commands</Heading>
-      <Flex gap="size-150" wrap>
+      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
         <TextField
           label="Command"
           value={props.command}
@@ -32,7 +32,7 @@ export function AtCommandsPanel(props: AtCommandsPanelProps) {
         <Button variant="accent" onPress={props.onSend}>
           Send
         </Button>
-      </Flex>
+      </div>
       <TextArea
         label="Response"
         value={props.response}
@@ -40,6 +40,6 @@ export function AtCommandsPanel(props: AtCommandsPanelProps) {
         minHeight="size-1200"
         width="100%"
       />
-    </View>
+    </div>
   );
 }

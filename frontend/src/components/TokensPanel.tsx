@@ -1,15 +1,13 @@
 import {
   Button,
   Divider,
-  Flex,
   Heading,
-  Item,
   Picker,
+  PickerItem,
   Text,
   TextArea,
   TextField,
-  View,
-} from "@adobe/react-spectrum";
+} from "@react-spectrum/s2";
 import { ApiToken, Role } from "../types";
 
 interface TokensPanelProps {
@@ -26,22 +24,22 @@ interface TokensPanelProps {
 
 export function TokensPanel(props: TokensPanelProps) {
   return (
-    <View backgroundColor="seafoam-400" padding="size-200" borderRadius="medium">
+    <div style={{ background: "#d9fff2", padding: "16px", borderRadius: "8px" }}>
       <Heading level={3}>API Tokens</Heading>
-      <Flex gap="size-150" wrap>
+      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
         <TextField label="Name" value={props.newTokenName} onChange={props.onNameChange} />
         <Picker
           label="Role"
           selectedKey={props.newTokenRole}
           onSelectionChange={(key) => props.onRoleChange(String(key) as Role)}
         >
-          <Item key="user">user</Item>
-          <Item key="admin">admin</Item>
+          <PickerItem id="user">user</PickerItem>
+          <PickerItem id="admin">admin</PickerItem>
         </Picker>
         <Button variant="accent" onPress={props.onCreateToken}>
           Create token
         </Button>
-      </Flex>
+      </div>
       {props.lastIssuedToken ? (
         <TextArea
           label="New token (save now)"
@@ -51,9 +49,12 @@ export function TokensPanel(props: TokensPanelProps) {
         />
       ) : null}
       <Divider size="S" marginY="size-100" />
-      <Flex direction="column" gap="size-100">
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         {props.tokens.map((item) => (
-          <Flex key={item.id} justifyContent="space-between" alignItems="center" gap="size-100">
+          <div
+            key={item.id}
+            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}
+          >
             <Text>
               #{item.id} {item.name} ({item.role}) created {item.created_at}
               {item.revoked_at ? ` revoked ${item.revoked_at}` : ""}
@@ -63,9 +64,9 @@ export function TokensPanel(props: TokensPanelProps) {
                 Revoke
               </Button>
             ) : null}
-          </Flex>
+          </div>
         ))}
-      </Flex>
-    </View>
+      </div>
+    </div>
   );
 }

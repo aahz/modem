@@ -54,6 +54,7 @@ yarn dev:ui
 MODEM_DEVICE=/dev/ttyUSB0
 JWT_SECRET=super-secret
 ADMIN_BOOTSTRAP_USERNAME=admin
+LOG_RETENTION_DAYS=30
 # Optional: if omitted, temporary password is generated and printed once in logs.
 # ADMIN_BOOTSTRAP_PASSWORD=strong-password
 ```
@@ -67,6 +68,9 @@ docker compose up -d --build
 ## Удаленная разработка (сервер с модемом)
 
 Для dev-цикла с hot-reload лучше запускать `docker compose` прямо на удаленном сервере, где физически подключен модем.
+В dev-конфиге поднимаются 2 сервиса:
+- `modem` (API, порт `8086`)
+- `modem-ui` (Vite UI, порт `5173`, proxy в API контейнер)
 
 1. На сервере `192.168.88.2`:
 - клонировать репозиторий;
@@ -75,16 +79,20 @@ docker compose up -d --build
 2. Запуск dev-сборки:
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d
+docker compose -f docker-compose.dev.yml up -d --build
 ```
 
 3. Логи:
 
 ```bash
-docker compose -f docker-compose.dev.yml logs -f modem
+docker compose -f docker-compose.dev.yml logs -f modem modem-ui
 ```
 
-4. Остановка:
+4. Открыть:
+- UI: `http://<server-ip>:5173/ui/`
+- API health: `http://<server-ip>:8086/health`
+
+5. Остановка:
 
 ```bash
 docker compose -f docker-compose.dev.yml down
@@ -207,4 +215,5 @@ docker pull ghcr.io/aahz/modem:1.2.3
 - Никогда не оставляйте дефолтный `JWT_SECRET` и пароль bootstrap-админа.
 - Для bootstrap-админа включена обязательная смена пароля при первом входе.
 - Для `user`-роли используйте максимально строгий whitelist в `USER_ALLOWED_COMMANDS`.
+- Логи AT-команд автоматически очищаются по `LOG_RETENTION_DAYS` (по умолчанию 30 дней).
 - Для продакшена лучше вынести TLS/ingress перед сервисом и ограничить сетью доступ к API/UI.

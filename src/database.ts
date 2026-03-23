@@ -308,3 +308,15 @@ export async function listCommandLogs(input: {
     input.limit
   );
 }
+
+export async function cleanupOldCommandLogs(
+  retentionDays: number
+): Promise<number> {
+  const db = await getDb();
+  const res = await db.run(
+    `DELETE FROM command_logs
+     WHERE datetime(created_at) < datetime('now', ?)`,
+    `-${retentionDays} days`
+  );
+  return (res.changes as number) ?? 0;
+}
