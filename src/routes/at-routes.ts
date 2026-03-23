@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { config } from "../config.js";
 import { writeCommandLog } from "../database.js";
-import { authenticate } from "../middleware/auth.js";
+import { authenticate, requirePasswordChanged } from "../middleware/auth.js";
 import {
   isUserCommandAllowed,
   normalizeAtCommand,
@@ -16,10 +16,34 @@ const sendAtSchema = z.object({
 
 export const atRouter = Router();
 
-atRouter.use(authenticate);
+atRouter.use(authenticate, requirePasswordChanged);
 
 atRouter.get("/modem/status", async (_req, res) => {
   res.json(modemService.status());
+});
+
+atRouter.get("/modem/mode", async (_req, res) => {
+  try {
+    const atModeReady = await modemService.checkAtCommandMode();
+    res.json({ atModeReady });
+  } catch (error) {
+    res.status(502).json({
+      error: "Failed to check modem mode",
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+atRouter.post("/modem/recover-mode", async (_req, res) => {
+  try {
+    const result = await modemService.recoverAtCommandMode();
+    res.json(result);
+  } catch (error) {
+    res.status(502).json({
+      error: "Failed to recover modem mode",
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
 });
 
 atRouter.post("/at/send", async (req, res) => {

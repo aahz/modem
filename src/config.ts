@@ -11,11 +11,12 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default("12h"),
   SERIAL_PATH: z.string().default("/dev/ttyUSB0"),
   BAUD_RATE: z.coerce.number().int().positive().default(115200),
+  LOG_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
   USER_ALLOWED_COMMANDS: z
     .string()
     .default("AT,ATI,AT+CSQ,AT+CREG?,AT+COPS?,AT+CGATT?"),
   ADMIN_BOOTSTRAP_USERNAME: z.string().default("admin"),
-  ADMIN_BOOTSTRAP_PASSWORD: z.string().min(6).default("admin123"),
+  ADMIN_BOOTSTRAP_PASSWORD: z.string().min(6).optional(),
 });
 
 const env = envSchema.parse(process.env);
@@ -28,6 +29,7 @@ export const config = {
   jwtExpiresIn: env.JWT_EXPIRES_IN,
   serialPath: env.SERIAL_PATH,
   baudRate: env.BAUD_RATE,
+  logRetentionDays: env.LOG_RETENTION_DAYS,
   userAllowedCommands: env.USER_ALLOWED_COMMANDS.split(",")
     .map((x) => x.trim().toUpperCase())
     .filter(Boolean),

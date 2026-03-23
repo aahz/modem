@@ -6,6 +6,7 @@ export interface AuthPrincipal {
   role: Role;
   authType: "jwt" | "api_token";
   tokenId?: number;
+  mustChangePassword: boolean;
 }
 
 export interface SendAtResult {

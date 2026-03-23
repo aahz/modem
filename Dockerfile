@@ -10,6 +10,8 @@ RUN yarn install --frozen-lockfile
 
 COPY tsconfig.json ./
 COPY src ./src
+COPY frontend ./frontend
+COPY vite.config.ts ./
 
 RUN yarn build
 
@@ -21,7 +23,7 @@ ENV NODE_ENV=production
 COPY package.json yarn.lock ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
-COPY src/ui ./src/ui
+COPY --from=build /app/dist-ui ./dist-ui
 
 EXPOSE 8080
 

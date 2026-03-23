@@ -30,46 +30,12 @@ export async function authenticate(
       res.status(401).json({ error: "Missing bearer token" });
       return;
     }
-
-    if (token.split(".").length === 3) {
-      const payload = verifyJwt(token);
-      const userId = Number(payload.sub);
-      const user = await findUserById(userId);
-      if (!user || user.is_active === 0) {
-        res.status(401).json({ error: "Invalid user for JWT token" });
-        return;
-      }
-      req.principal = {
-        id: user.id,
-        username: user.username,
-        role: user.role,
-        authType: "jwt",
-      };
-      next();
+    const principal = await authenticateToken(token);
+    if (!principal) {
+      res.status(401).json({ error: "Unauthorized" });
       return;
     }
-
-    const tokenHash = hashToken(token);
-    const apiToken = await findApiTokenByHash(tokenHash);
-    if (!apiToken) {
-      res.status(401).json({ error: "Invalid API token" });
-      return;
-    }
-
-    const owner = await findUserById(apiToken.created_by);
-    if (!owner || owner.is_active === 0) {
-      res.status(401).json({ error: "Token owner is inactive or missing" });
-      return;
-    }
-
-    await touchApiTokenLastUsed(apiToken.id);
-    req.principal = {
-      id: owner.id,
-      username: owner.username,
-      role: apiToken.role,
-      authType: "api_token",
-      tokenId: apiToken.id,
-    };
+    req.principal = principal;
     next();
   } catch (error) {
     res.status(401).json({
@@ -77,6 +43,45 @@ export async function authenticate(
       details: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+export async function authenticateToken(token: string) {
+  if (token.split(".").length === 3) {
+    const payload = verifyJwt(token);
+    const userId = Number(payload.sub);
+    const user = await findUserById(userId);
+    if (!user || user.is_active === 0) {
+      return null;
+    }
+    return {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      authType: "jwt" as const,
+      mustChangePassword: user.must_change_password === 1,
+    };
+  }
+
+  const tokenHash = hashToken(token);
+  const apiToken = await findApiTokenByHash(tokenHash);
+  if (!apiToken) {
+    return null;
+  }
+
+  const owner = await findUserById(apiToken.created_by);
+  if (!owner || owner.is_active === 0) {
+    return null;
+  }
+
+  await touchApiTokenLastUsed(apiToken.id);
+  return {
+    id: owner.id,
+    username: owner.username,
+    role: apiToken.role,
+    authType: "api_token" as const,
+    tokenId: apiToken.id,
+    mustChangePassword: owner.must_change_password === 1,
+  };
 }
 
 export function requireRole(...roles: Role[]) {
@@ -92,4 +97,24 @@ export function requireRole(...roles: Role[]) {
     }
     next();
   };
+}
+
+export function requirePasswordChanged(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const principal = req.principal;
+  if (!principal) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  if (principal.mustChangePassword) {
+    res.status(403).json({
+      error: "Password change required",
+      code: "PASSWORD_CHANGE_REQUIRED",
+    });
+    return;
+  }
+  next();
 }
