@@ -63,7 +63,7 @@ export function AtLogsTablePanel({
                     <Popover>
                       <div className="log-popover">
                         <Text>Actor: {item.actor_username} ({item.actor_role})</Text>
-                        <Text>Command: <StatusLight variant={item.status === 'ok' ? 'positive' : 'negative'}>{item.command}</StatusLight></Text>
+                        <Text>Command: {item.command}</Text>
                         <Text>Status: {item.status}</Text>
                         <Text>Timing: {item.created_at} / {item.duration_ms ? `${item.duration_ms} ms` : "-"}</Text>
                         {item.response ? (

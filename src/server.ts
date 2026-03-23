@@ -1,4 +1,3 @@
-import fs from "fs";
 import express from "express";
 import morgan from "morgan";
 import path from "path";
@@ -6,7 +5,6 @@ import swaggerUi from "swagger-ui-express";
 import { fileURLToPath } from "url";
 import { config } from "./config.js";
 import { cleanupOldCommandLogs, getDb } from "./database.js";
-import { commandLogEvents, CommandLogEvent } from "./log-events.js";
 import { authenticateToken } from "./middleware/auth.js";
 import { createRateLimit } from "./middleware/rate-limit.js";
 import { openApiDocument } from "./openapi.js";
@@ -18,14 +16,6 @@ import { modemService } from "./services/modem-service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-function resolveUiPath(): string {
-  const builtUiPath = path.resolve(__dirname, "../dist-ui");
-  if (fs.existsSync(builtUiPath)) {
-    return builtUiPath;
-  }
-  return path.resolve(__dirname, "../src/ui");
-}
 
 async function bootstrap(): Promise<void> {
   await getDb();
@@ -117,51 +107,6 @@ async function bootstrap(): Promise<void> {
   app.use("/docs", ...swaggerUi.serve);
   app.get("/docs", requireAdminDocsAccess, swaggerUi.setup(openApiDocument));
 
-  app.get("/api/v1/logs/stream", async (req, res) => {
-    const queryToken = typeof req.query.token === "string" ? req.query.token : null;
-    const authHeader = req.headers.authorization;
-    const headerToken = authHeader?.toLowerCase().startsWith("bearer ")
-      ? authHeader.slice(7)
-      : null;
-    const token = queryToken || headerToken;
-
-    if (!token) {
-      res.status(401).json({ error: "Missing token for stream" });
-      return;
-    }
-
-    const principal = await authenticateToken(token);
-    if (!principal) {
-      res.status(401).json({ error: "Unauthorized stream token" });
-      return;
-    }
-    if (principal.mustChangePassword) {
-      res.status(403).json({
-        error: "Password change required",
-        code: "PASSWORD_CHANGE_REQUIRED",
-      });
-      return;
-    }
-
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.flushHeaders();
-    res.write("event: ready\ndata: {}\n\n");
-
-    const listener = (event: CommandLogEvent) => {
-      if (principal.role !== "admin" && event.actor_user_id !== principal.id) {
-        return;
-      }
-      res.write(`data: ${JSON.stringify(event)}\n\n`);
-    };
-
-    commandLogEvents.on(listener);
-    req.on("close", () => {
-      commandLogEvents.off(listener);
-    });
-  });
-
   app.use("/api/v1", authRouter);
   app.use("/api/v1", tokenRouter);
   app.use("/api/v1", logRouter);
@@ -171,10 +116,18 @@ async function bootstrap(): Promise<void> {
     atRouter
   );
 
-  const uiPath = resolveUiPath();
+  const uiPath = path.resolve(__dirname, "../dist-ui");
   app.use("/ui", express.static(uiPath));
   app.get("/ui/*", (_req, res) => {
-    res.sendFile(path.join(uiPath, "index.html"));
+    res.sendFile(path.join(uiPath, "index.html"), (error) => {
+      if (!error) {
+        return;
+      }
+      res.status(503).json({
+        error: "UI build not found",
+        details: "Build frontend first (yarn build) or run Vite dev server (yarn dev:ui).",
+      });
+    });
   });
   app.get("/", (_req, res) => {
     res.redirect("/ui");
