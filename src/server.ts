@@ -112,7 +112,7 @@ async function bootstrap(): Promise<void> {
   app.use("/api/v1", logRouter);
   app.use(
     "/api/v1",
-    createRateLimit({ windowMs: 60_000, max: 60 }),
+    createRateLimit({ windowMs: 60000, max: 150 }),
     atRouter
   );
 

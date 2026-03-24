@@ -11,7 +11,7 @@ import { modemService } from "../services/modem-service.js";
 
 const sendAtSchema = z.object({
   command: z.string().min(1),
-  timeoutMs: z.number().int().positive().max(60000).optional(),
+  timeoutMs: z.number().int().positive().max(120000).optional(),
 });
 
 const acquireSchema = z.object({
