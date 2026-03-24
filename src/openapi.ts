@@ -166,7 +166,7 @@ export const openApiDocument = {
         required: ["command"],
         properties: {
           command: { type: "string", example: "AT+CSQ" },
-          timeoutMs: { type: "integer", minimum: 1, maximum: 60000, example: 5000 },
+          timeoutMs: { type: "integer", minimum: 1, maximum: 120000, example: 5000 },
         },
       },
       SendAtResponse: {

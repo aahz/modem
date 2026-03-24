@@ -174,6 +174,7 @@ networks:
   - body: `{ "currentPassword": "...", "newPassword": "..." }`
 - `POST /api/v1/at/send`:
   - body: `{ "command": "AT+CSQ", "timeoutMs": 5000 }`
+  - `timeoutMs`: `1..120000`
 - `POST /api/v1/acquire`:
   - body: `{ "timeoutMs": 30000 }` (optional, default `ACQUIRE_TIMEOUT_MS`)
 - `POST /api/v1/release`
