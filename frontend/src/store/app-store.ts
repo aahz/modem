@@ -145,17 +145,39 @@ export class AppStore {
     this.busy = true;
     this.error = null;
     try {
-      const res = await api<{ accessToken: string; user: Principal }>("/auth/login", "", {
-        method: "POST",
-        body: JSON.stringify({ username: this.username, password: this.password }),
-      });
-      runInAction(() => {
-        this.token = res.accessToken;
-        this.user = res.user;
-        localStorage.setItem("jwt", res.accessToken);
-      });
-      if (!res.user.mustChangePassword) {
-        await this.loadLogs(res.accessToken);
+      const candidateToken = this.password.trim();
+      let loggedInByToken = false;
+
+      if (candidateToken) {
+        try {
+          const me = await api<{ user: Principal }>("/auth/me", candidateToken);
+          runInAction(() => {
+            this.token = candidateToken;
+            this.user = me.user;
+            localStorage.setItem("jwt", candidateToken);
+          });
+          if (!me.user.mustChangePassword) {
+            await this.loadDashboardData(candidateToken);
+          }
+          loggedInByToken = true;
+        } catch {
+          // Not a valid bearer token for direct session, fallback to username/password login.
+        }
+      }
+
+      if (!loggedInByToken) {
+        const res = await api<{ accessToken: string; user: Principal }>("/auth/login", "", {
+          method: "POST",
+          body: JSON.stringify({ username: this.username, password: this.password }),
+        });
+        runInAction(() => {
+          this.token = res.accessToken;
+          this.user = res.user;
+          localStorage.setItem("jwt", res.accessToken);
+        });
+        if (!res.user.mustChangePassword) {
+          await this.loadLogs(res.accessToken);
+        }
       }
     } catch (e) {
       runInAction(() => { this.error = e instanceof Error ? e.message : String(e); });
