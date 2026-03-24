@@ -50,7 +50,11 @@ export const openApiDocument = {
         required: ["username", "password"],
         properties: {
           username: { type: "string", example: "root" },
-          password: { type: "string", example: "strong-password" },
+          password: {
+            type: "string",
+            example: "strong-password",
+            description: "User password or an API token issued for this username",
+          },
         },
       },
       LoginResponse: {
@@ -285,7 +289,7 @@ export const openApiDocument = {
     "/api/v1/auth/login": {
       post: {
         tags: ["Auth"],
-        summary: "Login with username/password",
+        summary: "Login with username + password or API token",
         requestBody: {
           required: true,
           content: {

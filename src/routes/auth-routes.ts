@@ -2,8 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 import {
   createUser,
+  findApiTokenByHash,
   findUserById,
   findUserByUsername,
+  touchApiTokenLastUsed,
   updateUserPassword,
 } from "../database.js";
 import {
@@ -11,7 +13,7 @@ import {
   requirePasswordChanged,
   requireRole,
 } from "../middleware/auth.js";
-import { hashPassword, signJwt, verifyPassword } from "../security.js";
+import { hashPassword, hashToken, signJwt, verifyPassword } from "../security.js";
 import { Role } from "../types.js";
 
 const loginSchema = z.object({
@@ -40,30 +42,59 @@ authRouter.post("/auth/login", async (req, res) => {
   }
 
   const user = await findUserByUsername(parsed.data.username);
-  if (!user || user.is_active === 0) {
-    res.status(401).json({ error: "Invalid credentials" });
-    return;
+  let sessionUser: {
+    id: number;
+    username: string;
+    role: Role;
+    mustChangePassword: boolean;
+  } | null = null;
+
+  if (user && user.is_active === 1) {
+    const validPassword = await verifyPassword(parsed.data.password, user.password_hash);
+    if (validPassword) {
+      sessionUser = {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        mustChangePassword: user.must_change_password === 1,
+      };
+    }
   }
 
-  const valid = await verifyPassword(parsed.data.password, user.password_hash);
-  if (!valid) {
+  if (!sessionUser) {
+    const apiToken = await findApiTokenByHash(hashToken(parsed.data.password));
+    if (apiToken) {
+      const owner = await findUserById(apiToken.created_by);
+      if (owner && owner.is_active === 1 && owner.username === parsed.data.username) {
+        await touchApiTokenLastUsed(apiToken.id);
+        sessionUser = {
+          id: owner.id,
+          username: owner.username,
+          role: apiToken.role,
+          mustChangePassword: owner.must_change_password === 1,
+        };
+      }
+    }
+  }
+
+  if (!sessionUser) {
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }
 
   const token = signJwt({
-    sub: String(user.id),
-    username: user.username,
-    role: user.role,
+    sub: String(sessionUser.id),
+    username: sessionUser.username,
+    role: sessionUser.role,
   });
 
   res.json({
     accessToken: token,
     user: {
-      id: user.id,
-      username: user.username,
-      role: user.role,
-      mustChangePassword: user.must_change_password === 1,
+      id: sessionUser.id,
+      username: sessionUser.username,
+      role: sessionUser.role,
+      mustChangePassword: sessionUser.mustChangePassword,
     },
   });
 });
