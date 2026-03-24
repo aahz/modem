@@ -115,14 +115,15 @@ export const App = observer(function App() {
               : (
                   <>
                     {activePage === "home" ? (
-                        <>
+                        <div className={style({display: 'flex', flexDirection: 'column', gap: 16})}>
                             <section className={style({display: 'flex', flexDirection: 'column', gap: 8})}>
-                              <Heading level={4}>Modem lease</Heading>
-                              <Text>
-                                {appStore.modemStatus?.lease?.active
-                                  ? `Acquired by ${appStore.modemStatus.lease.ownerUsername} (${appStore.modemStatus.lease.ownerRole}), expires: ${appStore.modemStatus.lease.expiresAt}`
-                                  : "Not acquired. Modem is currently available via ser2net."}
-                              </Text>
+                              <Heading level={4}>
+                                Modem lease is {
+                                  appStore.modemStatus?.lease?.active
+                                      ? `acquired by ${appStore.modemStatus.lease.ownerUsername} (${appStore.modemStatus.lease.ownerRole}), expires: ${appStore.modemStatus.lease.expiresAt}`
+                                      : 'currently available via ser2net'
+                                }
+                              </Heading>
                               <Text>
                                 TCP bridge: {appStore.modemStatus?.ser2net?.host}:{appStore.modemStatus?.ser2net?.port} (clients: {appStore.modemStatus?.ser2net?.clients ?? 0})
                               </Text>
@@ -135,7 +136,7 @@ export const App = observer(function App() {
                                   Acquire (5 min)
                                 </Button>
                                 <Button
-                                  variant="secondary"
+                                  variant="primary"
                                   isDisabled={appStore.busy || !appStore.modemStatus?.lease?.active}
                                   onPress={() => appStore.releaseModemLease(appStore.token)}
                                 >
@@ -161,7 +162,7 @@ export const App = observer(function App() {
                                   canCleanup={appStore.user.role === "admin"}
                               />
 
-                        </>
+                        </div>
                     ) : null}
 
                     {activePage === "tokens" && (
