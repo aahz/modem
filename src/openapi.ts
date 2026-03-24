@@ -120,8 +120,28 @@ export const openApiDocument = {
           path: { type: "string", example: "/dev/ttyACM0" },
           baudRate: { type: "integer", example: 9600 },
           lastError: { type: "string", nullable: true, example: null },
+          ser2net: {
+            type: "object",
+            properties: {
+              host: { type: "string", example: "0.0.0.0" },
+              port: { type: "integer", example: 2000 },
+              clients: { type: "integer", example: 1 },
+            },
+            required: ["host", "port", "clients"],
+          },
+          lease: {
+            type: "object",
+            properties: {
+              active: { type: "boolean", example: true },
+              ownerUsername: { type: "string", nullable: true, example: "root" },
+              ownerRole: { type: "string", nullable: true, enum: ["admin", "user"], example: "admin" },
+              expiresAt: { type: "string", nullable: true, format: "date-time" },
+              timeoutMs: { type: "integer", nullable: true, example: 30000 },
+            },
+            required: ["active", "ownerUsername", "ownerRole", "expiresAt", "timeoutMs"],
+          },
         },
-        required: ["connected", "path", "baudRate", "lastError"],
+        required: ["connected", "path", "baudRate", "lastError", "ser2net", "lease"],
       },
       ModemModeResponse: {
         type: "object",
@@ -156,6 +176,37 @@ export const openApiDocument = {
           durationMs: { type: "integer", example: 220 },
         },
         required: ["response", "durationMs"],
+      },
+      ModemLeaseInfo: {
+        type: "object",
+        properties: {
+          ownerUsername: { type: "string", example: "root" },
+          ownerRole: { type: "string", enum: ["admin", "user"], example: "admin" },
+          expiresAt: { type: "string", format: "date-time", example: "2026-03-24T20:11:00.000Z" },
+          timeoutMs: { type: "integer", example: 30000 },
+        },
+        required: ["ownerUsername", "ownerRole", "expiresAt", "timeoutMs"],
+      },
+      AcquireRequest: {
+        type: "object",
+        properties: {
+          timeoutMs: { type: "integer", minimum: 1, maximum: 600000, default: 30000 },
+        },
+      },
+      AcquireResponse: {
+        type: "object",
+        properties: {
+          ok: { type: "boolean", example: true },
+          lease: { $ref: "#/components/schemas/ModemLeaseInfo" },
+        },
+        required: ["ok", "lease"],
+      },
+      ReleaseResponse: {
+        type: "object",
+        properties: {
+          ok: { type: "boolean", example: true },
+        },
+        required: ["ok"],
       },
       CommandLogEntry: {
         type: "object",
@@ -460,6 +511,64 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/v1/acquire": {
+      post: {
+        tags: ["Modem"],
+        summary: "Acquire modem for exclusive HTTP API access",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AcquireRequest" },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Lease acquired",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/AcquireResponse" },
+              },
+            },
+          },
+          "423": {
+            description: "Modem already acquired by another session",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/v1/release": {
+      post: {
+        tags: ["Modem"],
+        summary: "Release modem lease and return it to network bridge mode",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "Released",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ReleaseResponse" },
+              },
+            },
+          },
+          "423": {
+            description: "Lease owned by another session",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+              },
+            },
+          },
+        },
+      },
+    },
     "/api/v1/modem/mode": {
       get: {
         tags: ["Modem"],
@@ -476,6 +585,14 @@ export const openApiDocument = {
           },
           "502": {
             description: "Serial/modem check error",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+              },
+            },
+          },
+          "423": {
+            description: "Lease required or owned by another session",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/ErrorResponse" },
@@ -501,6 +618,14 @@ export const openApiDocument = {
           },
           "502": {
             description: "Recovery failed",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+              },
+            },
+          },
+          "423": {
+            description: "Lease required or owned by another session",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/ErrorResponse" },
@@ -534,6 +659,14 @@ export const openApiDocument = {
           },
           "403": {
             description: "Blocked by role policy",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+              },
+            },
+          },
+          "423": {
+            description: "Lease required or owned by another session",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/ErrorResponse" },

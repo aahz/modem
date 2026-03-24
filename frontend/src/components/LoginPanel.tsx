@@ -22,7 +22,7 @@ export function LoginPanel(props: LoginPanelProps) {
             isRequired
             onChange={props.onUsernameChange} />
           <TextField
-            label="Password"
+            label="Password or API token"
             type="password"
             isRequired
             value={props.password}

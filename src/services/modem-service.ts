@@ -1,11 +1,36 @@
 import { SerialPort } from "serialport";
+import net, { Socket } from "net";
 import { config } from "../config.js";
-import { SendAtResult } from "../types.js";
+import { AuthPrincipal, SendAtResult } from "../types.js";
+
+interface ModemLease {
+  ownerKey: string;
+  ownerUsername: string;
+  ownerRole: AuthPrincipal["role"];
+  expiresAtMs: number;
+  timeoutMs: number;
+  timer: NodeJS.Timeout;
+}
 
 export class ModemService {
   private port: SerialPort | null = null;
   private queue: Promise<void> = Promise.resolve();
   private lastError: string | null = null;
+  private tcpServer: net.Server | null = null;
+  private tcpClients = new Set<Socket>();
+  private lease: ModemLease | null = null;
+
+  private onSerialData = (chunk: Buffer): void => {
+    if (this.lease) {
+      return;
+    }
+    for (const client of this.tcpClients) {
+      if (client.destroyed) {
+        continue;
+      }
+      client.write(chunk);
+    }
+  };
 
   async connect(): Promise<void> {
     try {
@@ -26,7 +51,9 @@ export class ModemService {
       });
 
       this.port = port;
+      this.port.on("data", this.onSerialData);
       this.lastError = null;
+      this.ensureTcpBridge();
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error);
       this.port = null;
@@ -38,13 +65,128 @@ export class ModemService {
     path: string;
     baudRate: number;
     lastError: string | null;
+    ser2net: {
+      host: string;
+      port: number;
+      clients: number;
+    };
+    lease: {
+      active: boolean;
+      ownerUsername: string | null;
+      ownerRole: AuthPrincipal["role"] | null;
+      expiresAt: string | null;
+      timeoutMs: number | null;
+    };
   } {
     return {
       connected: Boolean(this.port?.isOpen),
       path: config.serialPath,
       baudRate: config.baudRate,
       lastError: this.lastError,
+      ser2net: {
+        host: config.ser2netHost,
+        port: config.ser2netPort,
+        clients: this.tcpClients.size,
+      },
+      lease: {
+        active: Boolean(this.lease),
+        ownerUsername: this.lease?.ownerUsername ?? null,
+        ownerRole: this.lease?.ownerRole ?? null,
+        expiresAt: this.lease
+          ? new Date(this.lease.expiresAtMs).toISOString()
+          : null,
+        timeoutMs: this.lease?.timeoutMs ?? null,
+      },
     };
+  }
+
+  async acquire(principal: AuthPrincipal, timeoutMs = config.acquireTimeoutMs): Promise<{
+    acquired: boolean;
+    lease: {
+      ownerUsername: string;
+      ownerRole: AuthPrincipal["role"];
+      expiresAt: string;
+      timeoutMs: number;
+    } | null;
+    reason?: string;
+  }> {
+    await this.ensureConnected();
+    const ownerKey = this.ownerKey(principal);
+    const activeLease = this.lease;
+
+    if (activeLease && activeLease.ownerKey !== ownerKey) {
+      return {
+        acquired: false,
+        lease: {
+          ownerUsername: activeLease.ownerUsername,
+          ownerRole: activeLease.ownerRole,
+          expiresAt: new Date(activeLease.expiresAtMs).toISOString(),
+          timeoutMs: activeLease.timeoutMs,
+        },
+        reason: `Modem already acquired by ${activeLease.ownerUsername}`,
+      };
+    }
+
+    if (activeLease && activeLease.ownerKey === ownerKey) {
+      this.resetLeaseTimer(activeLease, timeoutMs);
+      return {
+        acquired: true,
+        lease: {
+          ownerUsername: activeLease.ownerUsername,
+          ownerRole: activeLease.ownerRole,
+          expiresAt: new Date(activeLease.expiresAtMs).toISOString(),
+          timeoutMs: activeLease.timeoutMs,
+        },
+      };
+    }
+
+    const lease: ModemLease = {
+      ownerKey,
+      ownerUsername: principal.username,
+      ownerRole: principal.role,
+      expiresAtMs: 0,
+      timeoutMs,
+      timer: setTimeout(() => undefined, timeoutMs),
+    };
+    this.lease = lease;
+    this.resetLeaseTimer(lease, timeoutMs);
+    this.disconnectAllTcpClients();
+
+    return {
+      acquired: true,
+      lease: {
+        ownerUsername: lease.ownerUsername,
+        ownerRole: lease.ownerRole,
+        expiresAt: new Date(lease.expiresAtMs).toISOString(),
+        timeoutMs: lease.timeoutMs,
+      },
+    };
+  }
+
+  release(principal: AuthPrincipal): {
+    released: boolean;
+    reason?: string;
+  } {
+    const activeLease = this.lease;
+    if (!activeLease) {
+      return { released: true };
+    }
+    if (principal.role !== "admin" && activeLease.ownerKey !== this.ownerKey(principal)) {
+      return { released: false, reason: "Modem is acquired by another session" };
+    }
+    this.clearLease();
+    return { released: true };
+  }
+
+  touchLease(principal: AuthPrincipal): void {
+    const activeLease = this.lease;
+    if (!activeLease) {
+      throw new Error("Modem is currently in network mode. Call /acquire first.");
+    }
+    if (activeLease.ownerKey !== this.ownerKey(principal)) {
+      throw new Error("Modem is acquired by another session.");
+    }
+    this.resetLeaseTimer(activeLease, activeLease.timeoutMs);
   }
 
   async sendCommand(command: string, timeoutMs = 5000): Promise<SendAtResult> {
@@ -291,6 +433,82 @@ export class ModemService {
 
   private async sleep(ms: number): Promise<void> {
     await new Promise<void>((resolve) => setTimeout(resolve, ms));
+  }
+
+  private ensureTcpBridge(): void {
+    if (this.tcpServer) {
+      return;
+    }
+
+    const server = net.createServer((socket) => {
+      if (!this.port?.isOpen) {
+        socket.end();
+        return;
+      }
+      if (this.lease) {
+        socket.end();
+        return;
+      }
+
+      this.tcpClients.add(socket);
+      socket.on("close", () => {
+        this.tcpClients.delete(socket);
+      });
+      socket.on("error", () => {
+        this.tcpClients.delete(socket);
+      });
+      socket.on("data", (chunk: Buffer) => {
+        if (!this.port?.isOpen || this.lease) {
+          socket.end();
+          return;
+        }
+        this.port.write(chunk, (error) => {
+          if (error) {
+            socket.end();
+            return;
+          }
+          this.port?.drain(() => undefined);
+        });
+      });
+    });
+
+    server.on("error", (error) => {
+      this.lastError = error.message;
+    });
+    server.listen(config.ser2netPort, config.ser2netHost);
+    this.tcpServer = server;
+  }
+
+  private disconnectAllTcpClients(): void {
+    for (const socket of this.tcpClients) {
+      socket.destroy();
+    }
+    this.tcpClients.clear();
+  }
+
+  private ownerKey(principal: AuthPrincipal): string {
+    if (principal.authType === "api_token") {
+      return `token:${principal.tokenId ?? principal.id}`;
+    }
+    return `jwt:${principal.id}`;
+  }
+
+  private clearLease(): void {
+    if (!this.lease) {
+      return;
+    }
+    clearTimeout(this.lease.timer);
+    this.lease = null;
+  }
+
+  private resetLeaseTimer(lease: ModemLease, timeoutMs: number): void {
+    clearTimeout(lease.timer);
+    lease.timeoutMs = timeoutMs;
+    lease.expiresAtMs = Date.now() + timeoutMs;
+    lease.timer = setTimeout(() => {
+      this.clearLease();
+    }, timeoutMs);
+    lease.timer.unref();
   }
 }
 

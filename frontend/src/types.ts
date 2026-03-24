@@ -30,3 +30,24 @@ export interface ApiToken {
   last_used_at: string | null;
   revoked_at: string | null;
 }
+
+export interface ModemLeaseStatus {
+  active: boolean;
+  ownerUsername: string | null;
+  ownerRole: Role | null;
+  expiresAt: string | null;
+  timeoutMs: number | null;
+}
+
+export interface ModemStatus {
+  connected: boolean;
+  path: string;
+  baudRate: number;
+  lastError: string | null;
+  ser2net: {
+    host: string;
+    port: number;
+    clients: number;
+  };
+  lease: ModemLeaseStatus;
+}

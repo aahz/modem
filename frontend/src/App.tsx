@@ -54,6 +54,16 @@ export const App = observer(function App() {
     }
   }, [appStore.user]);
 
+  useEffect(() => {
+    if (!appStore.token || !appStore.user || appStore.securityLocked) {
+      return;
+    }
+    const timer = setInterval(() => {
+      appStore.refreshModemStatus(appStore.token).catch(() => undefined);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [appStore.token, appStore.user, appStore.securityLocked]);
+
   if (!appStore.user) {
     return (
       <div className="app-shell">
@@ -106,6 +116,34 @@ export const App = observer(function App() {
                   <>
                     {activePage === "home" ? (
                         <>
+                            <section className={style({display: 'flex', flexDirection: 'column', gap: 8})}>
+                              <Heading level={4}>Modem lease</Heading>
+                              <Text>
+                                {appStore.modemStatus?.lease?.active
+                                  ? `Acquired by ${appStore.modemStatus.lease.ownerUsername} (${appStore.modemStatus.lease.ownerRole}), expires: ${appStore.modemStatus.lease.expiresAt}`
+                                  : "Not acquired. Modem is currently available via ser2net."}
+                              </Text>
+                              <Text>
+                                TCP bridge: {appStore.modemStatus?.ser2net?.host}:{appStore.modemStatus?.ser2net?.port} (clients: {appStore.modemStatus?.ser2net?.clients ?? 0})
+                              </Text>
+                              <ButtonGroup>
+                                <Button
+                                  variant="accent"
+                                  isDisabled={appStore.busy || !!appStore.modemStatus?.lease?.active}
+                                  onPress={() => appStore.acquireModemLease(appStore.token)}
+                                >
+                                  Acquire (5 min)
+                                </Button>
+                                <Button
+                                  variant="secondary"
+                                  isDisabled={appStore.busy || !appStore.modemStatus?.lease?.active}
+                                  onPress={() => appStore.releaseModemLease(appStore.token)}
+                                >
+                                  Release
+                                </Button>
+                              </ButtonGroup>
+                            </section>
+
                             <AtCommandsPanel
                                 command={appStore.atCommand}
                                 timeoutMs={appStore.atTimeout}

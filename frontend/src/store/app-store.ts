@@ -1,6 +1,8 @@
 import { makeAutoObservable, runInAction } from "mobx";
 import { api } from "../lib/api";
-import { ApiToken, CommandLog, Principal, Role } from "../types";
+import { ApiToken, CommandLog, ModemStatus, Principal, Role } from "../types";
+
+const UI_LEASE_TIMEOUT_MS = 5 * 60 * 1000;
 
 export class AppStore {
   token = localStorage.getItem("jwt") ?? "";
@@ -16,12 +18,7 @@ export class AppStore {
   atTimeout = "5000";
   atResponse = "";
 
-  modemStatus: {
-    connected: boolean;
-    path: string;
-    baudRate: number;
-    lastError: string | null;
-  } | null = null;
+  modemStatus: ModemStatus | null = null;
   atModeReady: boolean | null = null;
 
   logs: CommandLog[] = [];
@@ -107,13 +104,41 @@ export class AppStore {
   }
 
   async refreshModemStatus(activeToken: string): Promise<void> {
-    const status = await api<{
-      connected: boolean;
-      path: string;
-      baudRate: number;
-      lastError: string | null;
-    }>("/modem/status", activeToken);
+    const status = await api<ModemStatus>("/modem/status", activeToken);
     runInAction(() => { this.modemStatus = status; });
+  }
+
+  async acquireModemLease(activeToken: string): Promise<void> {
+    this.busy = true;
+    this.error = null;
+    try {
+      await api<{ ok: boolean; lease: unknown }>("/acquire", activeToken, {
+        method: "POST",
+        body: JSON.stringify({
+          timeoutMs: UI_LEASE_TIMEOUT_MS,
+        }),
+      });
+      await this.refreshModemStatus(activeToken);
+    } catch (e) {
+      runInAction(() => { this.error = e instanceof Error ? e.message : String(e); });
+    } finally {
+      runInAction(() => { this.busy = false; });
+    }
+  }
+
+  async releaseModemLease(activeToken: string): Promise<void> {
+    this.busy = true;
+    this.error = null;
+    try {
+      await api<{ ok: boolean }>("/release", activeToken, {
+        method: "POST",
+      });
+      await this.refreshModemStatus(activeToken);
+    } catch (e) {
+      runInAction(() => { this.error = e instanceof Error ? e.message : String(e); });
+    } finally {
+      runInAction(() => { this.busy = false; });
+    }
   }
 
   async checkModemMode(activeToken: string): Promise<void> {
@@ -145,17 +170,39 @@ export class AppStore {
     this.busy = true;
     this.error = null;
     try {
-      const res = await api<{ accessToken: string; user: Principal }>("/auth/login", "", {
-        method: "POST",
-        body: JSON.stringify({ username: this.username, password: this.password }),
-      });
-      runInAction(() => {
-        this.token = res.accessToken;
-        this.user = res.user;
-        localStorage.setItem("jwt", res.accessToken);
-      });
-      if (!res.user.mustChangePassword) {
-        await this.loadLogs(res.accessToken);
+      const candidateToken = this.password.trim();
+      let loggedInByToken = false;
+
+      if (candidateToken) {
+        try {
+          const me = await api<{ user: Principal }>("/auth/me", candidateToken);
+          runInAction(() => {
+            this.token = candidateToken;
+            this.user = me.user;
+            localStorage.setItem("jwt", candidateToken);
+          });
+          if (!me.user.mustChangePassword) {
+            await this.loadDashboardData(candidateToken);
+          }
+          loggedInByToken = true;
+        } catch {
+          // Not a valid bearer token for direct session, fallback to username/password login.
+        }
+      }
+
+      if (!loggedInByToken) {
+        const res = await api<{ accessToken: string; user: Principal }>("/auth/login", "", {
+          method: "POST",
+          body: JSON.stringify({ username: this.username, password: this.password }),
+        });
+        runInAction(() => {
+          this.token = res.accessToken;
+          this.user = res.user;
+          localStorage.setItem("jwt", res.accessToken);
+        });
+        if (!res.user.mustChangePassword) {
+          await this.loadLogs(res.accessToken);
+        }
       }
     } catch (e) {
       runInAction(() => { this.error = e instanceof Error ? e.message : String(e); });
@@ -198,6 +245,13 @@ export class AppStore {
     this.busy = true;
     this.error = null;
     try {
+      await api<{ ok: boolean; lease: unknown }>("/acquire", this.token, {
+        method: "POST",
+        body: JSON.stringify({
+          timeoutMs: UI_LEASE_TIMEOUT_MS,
+        }),
+      });
+
       const res = await api<{ response: string; durationMs: number }>("/at/send", this.token, {
         method: "POST",
         body: JSON.stringify({
@@ -208,6 +262,7 @@ export class AppStore {
       runInAction(() => {
         this.atResponse = String(res.response);
       });
+      await this.refreshModemStatus(this.token);
     } catch (e) {
       runInAction(() => { this.error = e instanceof Error ? e.message : String(e); });
     } finally {

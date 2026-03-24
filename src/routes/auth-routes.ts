@@ -45,8 +45,8 @@ authRouter.post("/auth/login", async (req, res) => {
     return;
   }
 
-  const valid = await verifyPassword(parsed.data.password, user.password_hash);
-  if (!valid) {
+  const validPassword = await verifyPassword(parsed.data.password, user.password_hash);
+  if (!validPassword) {
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }

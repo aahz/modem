@@ -54,6 +54,8 @@ yarn dev:ui
 MODEM_DEVICE=/dev/ttyUSB0
 JWT_SECRET=super-secret
 ADMIN_BOOTSTRAP_USERNAME=admin
+SER2NET_PORT=2000
+ACQUIRE_TIMEOUT_MS=30000
 LOG_RETENTION_DAYS=30
 # Optional: if omitted, temporary password is generated and printed once in logs.
 # ADMIN_BOOTSTRAP_PASSWORD=strong-password
@@ -128,6 +130,9 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       MODEM_DEVICE: /dev/ttyACM0
       BAUD_RATE: ${BAUD_RATE:-9600}
+      SER2NET_HOST: ${SER2NET_HOST:-0.0.0.0}
+      SER2NET_PORT: ${SER2NET_PORT:-2000}
+      ACQUIRE_TIMEOUT_MS: ${ACQUIRE_TIMEOUT_MS:-30000}
       USER_ALLOWED_COMMANDS: ${USER_ALLOWED_COMMANDS:-AT,ATI,AT+CSQ}
       ADMIN_BOOTSTRAP_USERNAME: ${ADMIN_BOOTSTRAP_USERNAME:-root}
       ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD}
@@ -135,6 +140,10 @@ services:
       - ./modem/data:/app/data
     devices:
       - "${MODEM_DEVICE:-/dev/ttyACM0}:${SERIAL_PATH:-/dev/ttyACM0}"
+    ports:
+      - "${SER2NET_PORT:-2000}:${SER2NET_PORT:-2000}"
+      # или явно:
+      # - "2000:2000"
     networks:
       - modem-network
 
@@ -159,11 +168,15 @@ networks:
 
 - `POST /api/v1/auth/login`:
   - body: `{ "username": "admin", "password": "..." }`
+  - принимает только пароль пользователя (не API token)
 - `GET /api/v1/auth/me`
 - `POST /api/v1/auth/change-password`:
   - body: `{ "currentPassword": "...", "newPassword": "..." }`
 - `POST /api/v1/at/send`:
   - body: `{ "command": "AT+CSQ", "timeoutMs": 5000 }`
+- `POST /api/v1/acquire`:
+  - body: `{ "timeoutMs": 30000 }` (optional, default `ACQUIRE_TIMEOUT_MS`)
+- `POST /api/v1/release`
 - `GET /api/v1/modem/status`
 - `GET /api/v1/logs?limit=100`
 - `GET /api/v1/logs/stream?token=<jwt_or_api_token>` (SSE live stream)
@@ -173,6 +186,15 @@ networks:
 - `POST /api/v1/users` (admin)
 
 Все защищенные endpoint'ы требуют `Authorization: Bearer <token>`.
+В `Bearer` можно передавать как JWT, так и API token.
+
+Модель доступа к модему:
+- по умолчанию модем доступен по TCP bridge (встроенный ser2net, порт `SER2NET_PORT`);
+- после `POST /api/v1/acquire` модем резервируется за текущей API-сессией;
+- во время lease новые TCP bridge подключения отклоняются;
+- `POST /api/v1/at/send`, `GET /api/v1/modem/mode`, `POST /api/v1/modem/recover-mode` требуют активный lease;
+- каждый такой вызов сбрасывает lease-таймаут;
+- `POST /api/v1/release` освобождает модем вручную; без release lease снимается автоматически по timeout.
 
 ## Сборка image через GitHub Actions
 
